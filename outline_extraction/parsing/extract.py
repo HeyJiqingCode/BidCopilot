@@ -1,20 +1,23 @@
 """文本抽取——探测优先决策链，统一输出 Markdown"""
 import subprocess
 from pathlib import Path
+from typing import Any
 import docx
 import pdfplumber
 from outline_extraction.models import ParsedDocument
+from outline_extraction.parsing.cu_client import analyze_with_cu
 
 # 扫描件判定阈值：每页平均字符数低于此值视为扫描件
 _SCANNED_CHARS_PER_PAGE = 50
 
 
-def extract_document(file_path: Path, suffix: str) -> ParsedDocument:
+def extract_document(file_path: Path, suffix: str, cu: Any = None) -> ParsedDocument:
     """按后缀走探测优先决策链抽取文本
 
     参数:
         file_path: 文件路径
         suffix: 小写后缀
+        cu: 可选 Content Understanding 客户端；扫描件 PDF 时调用，None 则降级
     返回:
         ParsedDocument（含统一 Markdown 与抽取方式标记）
     """
@@ -26,7 +29,7 @@ def extract_document(file_path: Path, suffix: str) -> ParsedDocument:
         return ParsedDocument(filename=name, raw_markdown=_doc_to_md(file_path),
                               extract_method="textutil", page_count=None)
     if suffix == ".pdf":
-        return _pdf_to_doc(file_path, name)
+        return _pdf_to_doc(file_path, name, cu)
     if suffix == ".xml":
         return ParsedDocument(filename=name, raw_markdown=file_path.read_text(errors="ignore"),
                               extract_method="xml", page_count=None)
@@ -67,8 +70,8 @@ def _doc_to_md(file_path: Path) -> str:
     return result.stdout
 
 
-def _pdf_to_doc(file_path: Path, name: str) -> ParsedDocument:
-    """PDF：抽文本层；字符过少标记 needs_ocr 留待 CU——内部辅助"""
+def _pdf_to_doc(file_path: Path, name: str, cu: Any = None) -> ParsedDocument:
+    """PDF：抽文本层；字符过少视为扫描件，优先走 CU，CU 不可用则降级——内部辅助"""
     text_parts: list[str] = []
     page_count = 0
     with pdfplumber.open(str(file_path)) as pdf:
@@ -77,7 +80,12 @@ def _pdf_to_doc(file_path: Path, name: str) -> ParsedDocument:
             text_parts.append(page.extract_text() or "")
     full = "\n".join(text_parts)
     if _is_scanned(len(full.strip()), page_count):
-        return ParsedDocument(filename=name, raw_markdown=full,
+        cu_result = analyze_with_cu(file_path, cu)
+        if cu_result.markdown:                       # CU 可用：用其结构化输出
+            return ParsedDocument(filename=name, raw_markdown=cu_result.markdown,
+                                  extract_method="cu_ocr",
+                                  page_count=cu_result.page_count or page_count)
+        return ParsedDocument(filename=name, raw_markdown=full,    # 降级：保留原文本
                               extract_method="needs_ocr", page_count=page_count)
     return ParsedDocument(filename=name, raw_markdown=full,
                           extract_method="pdf_text", page_count=page_count)
