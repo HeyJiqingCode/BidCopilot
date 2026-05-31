@@ -24,6 +24,8 @@ def extract_requirements(section_texts: list[str], llm, model: str) -> list[Requ
     instructions = _PROMPT_PATH.read_text(encoding="utf-8")
     all_items: list[RequirementItem] = []
     for text in section_texts:
+        if not text.strip():            # 跳过空白章节：无内容可抽，且空 input 会被 API 拒绝
+            continue
         result = llm.complete(
             model=model, instructions=instructions, input_content=text,
             effort="medium", verbosity="low", schema=RequirementsResult,

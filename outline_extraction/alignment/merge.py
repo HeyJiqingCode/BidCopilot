@@ -20,7 +20,7 @@ class Disposition(str, Enum):
 
 class MergeDecision(BaseModel):
     """单条要求的归属判定"""
-    requirement_location: str             # 对应要求的 location（关联键）
+    ref_id: str                           # 对应要求的 ref_id（稳定唯一关联键）
     disposition: Disposition
     node_id: Optional[str] = None         # 归属节点 id（floating 时为空）
 
@@ -61,17 +61,17 @@ def compute_coverage(requirements: list[RequirementItem],
     """纯工程统计覆盖率——不依赖 LLM 自报
 
     参数:
-        requirements: 全部要求条目
-        decisions: LLM 给出的归属判定
+        requirements: 全部要求条目（带稳定 ref_id）
+        decisions: LLM 给出的归属判定（以 ref_id 关联）
     返回:
         CoverageReport（按来源类型统计 total/mapped，列出未挂载描述）
     """
-    # location → disposition 映射
-    disp_by_loc: dict[str, Disposition] = {d.requirement_location: d.disposition for d in decisions}
+    # ref_id → disposition 映射（ref_id 唯一，不会像 location 那样发生折叠）
+    disp_by_ref: dict[str, Disposition] = {d.ref_id: d.disposition for d in decisions}
     total_scoring = mapped_scoring = total_tech = mapped_tech = 0
     unmapped: list[str] = []
     for req in requirements:
-        disp = disp_by_loc.get(req.location, Disposition.FLOATING)
+        disp = disp_by_ref.get(req.ref_id, Disposition.FLOATING)
         is_mapped = disp in (Disposition.MERGED_INTO, Disposition.CHILD_OF)
         if req.source_type == SourceType.SCORING:
             total_scoring += 1

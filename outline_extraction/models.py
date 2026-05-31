@@ -67,6 +67,7 @@ class Section(BaseModel):
 
 class RequirementItem(BaseModel):
     """从评分/技术规范抽取的单条要求"""
+    ref_id: str = ""                       # 稳定唯一关联键（如 R0/R1…），由管线赋值，供归并回填
     description: str                       # 要求描述
     source_type: SourceType                # 来源类型
     location: str                          # 原文定位

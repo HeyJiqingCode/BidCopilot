@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 from typing import Callable, Optional, Any
-from outline_extraction.models import OutlineTree, ParsedDocument
+from outline_extraction.models import OutlineTree, ParsedDocument, Section
 from outline_extraction.parsing.unpack import collect_files
 from outline_extraction.parsing.extract import extract_document
 from outline_extraction.understanding.classify import classify_documents
@@ -64,16 +64,24 @@ def run_pipeline(
     _emit("locate", located.model_dump())
 
     # 5. 抽显式骨架（合并所有 bid_format 章节）
+    #    定位到的是章节标题，其正文常被切分到后续子章节，故收集整段（标题+全部下级）。
     skeleton = []
     for i in located.bid_format_sections:
         sec = sections[i]
-        skeleton.extend(extract_skeleton(sec.content, document=sec.doc_source, llm=llm, model=model_main))
+        span = _gather_span(sections, i)
+        if not span.strip():
+            continue
+        skeleton.extend(extract_skeleton(span, document=sec.doc_source, llm=llm, model=model_main))
     _emit("extract_skeleton", [n.model_dump() for n in skeleton])
 
     # 6. 抽要求条目（评分+技术+商务章节）
+    #    同样按整段收集；空段交由 extract_requirements 跳过。
     req_indices = located.scoring_sections + located.tech_spec_sections + located.business_sections
-    req_texts = [sections[i].content for i in req_indices]
+    req_texts = [_gather_span(sections, i) for i in req_indices]
     requirements = extract_requirements(req_texts, llm=llm, model=model_main)
+    # 赋稳定唯一 ref_id，作为归并/覆盖率的关联键（location 非唯一、易被 LLM 改写）
+    for idx, req in enumerate(requirements):
+        req.ref_id = f"R{idx}"
     _emit("extract_requirements", [r.model_dump() for r in requirements])
 
     # 7. 归并 + 覆盖率
@@ -109,13 +117,38 @@ def _pair_floating(requirements, decisions):
     返回:
         [(requirement, decision)] 仅 floating 项
     """
-    disp_by_loc = {d.requirement_location: d for d in decisions}
+    disp_by_ref = {d.ref_id: d for d in decisions}
     pairs = []
     for req in requirements:
-        d = disp_by_loc.get(req.location)
+        d = disp_by_ref.get(req.ref_id)
         if d is None or d.disposition == Disposition.FLOATING:
             pairs.append((req, d))
     return pairs
+
+
+def _gather_span(sections: list[Section], start: int) -> str:
+    """收集某章节的完整文本——标题 + 其全部下级章节，直到遇到同级或更高级标题
+
+    切分后一个逻辑章节常被拆成"标题段（正文空）+ 多个子段"，单看起始段会丢正文。
+    本函数把起始段及其所有更深层级的后续段重新拼回完整文本，与具体标的无关。
+
+    参数:
+        sections: 全部章节（按文档顺序）
+        start: 起始章节索引
+    返回:
+        拼接好的整段文本（标题与正文交错）
+    """
+    head = sections[start]
+    parts: list[str] = [head.title]
+    if head.content.strip():
+        parts.append(head.content)
+    for sec in sections[start + 1:]:
+        if sec.doc_source != head.doc_source or sec.level <= head.level:
+            break  # 跨文件或回到同级/更高级 → 本段结束
+        parts.append(sec.title)
+        if sec.content.strip():
+            parts.append(sec.content)
+    return "\n".join(parts)
 
 
 def _dump(run_dir: Path, step: str, payload: Any) -> None:

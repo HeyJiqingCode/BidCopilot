@@ -11,6 +11,9 @@
 
 返回：
 - tree: 归并后的完整大纲树（骨架节点 + 新增子节点；被合并的节点 sources 数组追加对应来源）
-- decisions: 每个要求条目的归属判定 [{requirement_location, disposition: merged_into|child_of|floating, node_id}]
+- decisions: 每个要求条目的归属判定 [{ref_id, disposition: merged_into|child_of|floating, node_id}]
 
-不要丢弃任何要求条目；无法归位的必须标 floating，绝不静默忽略。
+关于 decisions（务必严格遵守）：
+- 每个要求条目都带有唯一的 ref_id（如 R0、R1…）。decisions 中的 ref_id 必须原样照抄输入要求的 ref_id，不得改写、合并或省略。
+- 输入有多少个要求条目，decisions 就必须有多少条，一一对应，数量完全一致。
+- 不要丢弃任何要求条目；无法归位的必须标 floating，绝不静默忽略。
