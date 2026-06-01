@@ -1,10 +1,13 @@
 """FastAPI 后端——上传、运行管线、SSE 进度、树查询、Word 导出"""
+import asyncio
+import json
 import shutil
 import queue
+import threading
 import uuid
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from outline_extraction.config import Settings
 from outline_extraction.llm.client import LLMClient
@@ -44,9 +47,13 @@ async def upload(file: UploadFile = File(...)) -> JSONResponse:
     return JSONResponse({"run_id": run_id, "filename": file.filename})
 
 
+# 哨兵：管线线程结束时放入队列，通知 SSE 端点收尾
+_DONE = object()
+
+
 @app.post("/api/run/{run_id}")
 async def run(run_id: str) -> JSONResponse:
-    """同步执行管线（Demo 简化：阻塞直到完成，进度仍入队供回看）"""
+    """启动管线（非阻塞）：后台线程执行，日志事件入队供 SSE 流式推送"""
     if run_id not in UPLOAD_STORE:
         raise HTTPException(404, "unknown run_id")
     q: queue.Queue = queue.Queue()
@@ -54,17 +61,45 @@ async def run(run_id: str) -> JSONResponse:
     settings = Settings()
     llm = LLMClient(settings=settings)
 
-    def _cb(step: str, payload) -> None:
-        q.put(step)
+    def _worker() -> None:
+        """后台线程跑管线，把阶段日志/完成/异常事件入队——内部辅助"""
+        def _log_cb(event: dict) -> None:
+            q.put(event)
+        try:
+            tree = run_pipeline(
+                UPLOAD_STORE[run_id], llm=llm,
+                model_main=settings.model_main, model_mini=settings.model_mini,
+                run_dir=RUNS_DIR / run_id, log_callback=_log_cb,
+            )
+            TREE_STORE[run_id] = tree
+            q.put({"event": "done"})
+        except Exception as exc:  # 把异常透传到前端，不静默吞
+            q.put({"event": "error", "message": str(exc)})
+        finally:
+            q.put(_DONE)
 
-    tree = run_pipeline(
-        UPLOAD_STORE[run_id], llm=llm,
-        model_main=settings.model_main, model_mini=settings.model_mini,
-        run_dir=RUNS_DIR / run_id, progress_callback=_cb,
-    )
-    TREE_STORE[run_id] = tree
-    q.put("__done__")
-    return JSONResponse({"status": "done"})
+    threading.Thread(target=_worker, daemon=True).start()
+    return JSONResponse({"status": "started"})
+
+
+@app.get("/api/progress/{run_id}")
+async def progress(run_id: str) -> StreamingResponse:
+    """SSE 进度端点——流式推送阶段日志事件，直到收到哨兵收尾"""
+    if run_id not in PROGRESS_QUEUES:
+        raise HTTPException(404, "unknown run_id")
+    q = PROGRESS_QUEUES[run_id]
+
+    async def _stream():
+        """从队列取事件并以 SSE 格式 yield——内部辅助"""
+        loop = asyncio.get_event_loop()
+        while True:
+            # 阻塞 get 放到线程池，避免堵住事件循环
+            item = await loop.run_in_executor(None, q.get)
+            if item is _DONE:
+                break
+            yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
 
 
 @app.get("/api/tree/{run_id}")

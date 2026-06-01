@@ -15,12 +15,12 @@ def _fake_tree():
 
 
 def test_upload_and_run(monkeypatch, tmp_path):
-    """上传文件→run→拿到 tree"""
+    """上传文件→run（后台线程）→SSE 收到 done→拿到 tree"""
     monkeypatch.setattr(api_main, "RUNS_DIR", tmp_path)
 
-    def fake_run(input_path, llm, model_main, model_mini, run_dir, progress_callback):
-        progress_callback("parse", {})
-        progress_callback("finalize", {})
+    def fake_run(input_path, llm, model_main, model_mini, run_dir, log_callback):
+        log_callback({"phase": "parse", "status": "start", "message": ""})
+        log_callback({"phase": "parse", "status": "done", "message": "解析完成：1 个文件"})
         return _fake_tree()
 
     monkeypatch.setattr(api_main, "run_pipeline", fake_run)
@@ -33,10 +33,41 @@ def test_upload_and_run(monkeypatch, tmp_path):
 
     run = client.post(f"/api/run/{run_id}")
     assert run.status_code == 200
+    assert run.json()["status"] == "started"
+
+    # 消费 SSE 流，确保后台线程跑完（done 事件后流结束）
+    with client.stream("GET", f"/api/progress/{run_id}") as resp:
+        assert resp.status_code == 200
+        body = "".join(resp.iter_text())
+    assert "解析完成" in body
+    assert "done" in body
 
     tree = client.get(f"/api/tree/{run_id}")
     assert tree.status_code == 200
     assert tree.json()["nodes"][0]["title"] == "投标函"
+
+
+def test_progress_sse_streams_phase_events(monkeypatch, tmp_path):
+    """SSE 进度端点流式推送阶段日志事件"""
+    monkeypatch.setattr(api_main, "RUNS_DIR", tmp_path)
+
+    def fake_run(input_path, llm, model_main, model_mini, run_dir, log_callback):
+        log_callback({"phase": "classify", "status": "done", "message": "分类完成：技术规范×2"})
+        log_callback({"phase": "finalize", "status": "done", "message": "完成：大纲共 10 个标题"})
+        return _fake_tree()
+
+    monkeypatch.setattr(api_main, "run_pipeline", fake_run)
+
+    client = TestClient(api_main.app)
+    files = {"file": ("a.docx", io.BytesIO(b"fakedocx"), "application/octet-stream")}
+    run_id = client.post("/api/upload", files=files).json()["run_id"]
+    client.post(f"/api/run/{run_id}")
+
+    with client.stream("GET", f"/api/progress/{run_id}") as resp:
+        body = "".join(resp.iter_text())
+    assert "分类完成：技术规范×2" in body
+    assert "完成：大纲共 10 个标题" in body
+    assert "classify" in body and "finalize" in body
 
 
 def test_export_docx(monkeypatch, tmp_path):

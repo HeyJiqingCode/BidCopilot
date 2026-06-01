@@ -1,27 +1,38 @@
 // 招标大纲提取前端逻辑（Alpine 组件）
+
+// 9 阶段固定顺序与中文标签
+const PHASE_DEFS = [
+  { key: "parse", label: "解析文件" },
+  { key: "classify", label: "文件分类" },
+  { key: "segment", label: "章节切分" },
+  { key: "locate", label: "定位关键章节" },
+  { key: "extract_skeleton", label: "抽取显式骨架" },
+  { key: "extract_requirements", label: "抽取要求条目" },
+  { key: "merge", label: "归并对齐" },
+  { key: "supplement", label: "生成式补充" },
+  { key: "finalize", label: "完成" },
+];
+
 function app() {
   return {
     runId: null,
     fileName: "",
     running: false,
-    steps: [],
+    phases: [],        // [{key,label,status:'pending'|'running'|'done',logs:[]}]
+    errorMsg: "",
     tree: null,
     keepAiMarks: false,
+
+    // 初始化阶段时间线为全 pending——辅助
+    initPhases() {
+      this.phases = PHASE_DEFS.map(p => ({ key: p.key, label: p.label, status: "pending", logs: [] }));
+    },
 
     // 来源类型 → 徽章
     badge(type) {
       const m = { skeleton: "📋骨架", scoring: "📊评分", tech_spec: "📐技术",
                   biz_terms: "📄商务", ai_suggested: "🤖AI建议" };
       return m[type] || type;
-    },
-
-    // 步骤名 → 中文标签
-    stepLabel(s) {
-      const m = { parse: "解析文件", classify: "文件分类", segment: "章节切分",
-                  locate: "定位关键章节", extract_skeleton: "抽取显式骨架",
-                  extract_requirements: "抽取要求条目", merge: "归并对齐",
-                  supplement: "生成式补充", finalize: "完成" };
-      return m[s] || s;
     },
 
     // 选择文件后立即上传
@@ -36,16 +47,44 @@ function app() {
       this.runId = data.run_id;
     },
 
-    // 运行管线
+    // 运行管线：启动后台执行，并用 SSE 实时接收阶段日志
     async run() {
       if (!this.runId) return;
       this.running = true;
-      this.steps = [];
+      this.errorMsg = "";
       this.tree = null;
+      this.initPhases();
       await fetch(`/api/run/${this.runId}`, { method: "POST" });
-      const tr = await fetch(`/api/tree/${this.runId}`);
-      this.tree = await tr.json();
-      this.running = false;
+
+      const es = new EventSource(`/api/progress/${this.runId}`);
+      es.onmessage = async (e) => {
+        const ev = JSON.parse(e.data);
+        if (ev.event === "done") {
+          es.close();
+          const tr = await fetch(`/api/tree/${this.runId}`);
+          this.tree = await tr.json();
+          this.running = false;
+        } else if (ev.event === "error") {
+          es.close();
+          this.errorMsg = ev.message || "运行出错";
+          this.running = false;
+        } else {
+          this.applyPhaseEvent(ev);
+        }
+      };
+      es.onerror = () => { es.close(); this.running = false; };
+    },
+
+    // 应用一条阶段日志事件到时间线——辅助
+    applyPhaseEvent(ev) {
+      const p = this.phases.find(x => x.key === ev.phase);
+      if (!p) return;
+      if (ev.status === "start") {
+        p.status = "running";
+      } else if (ev.status === "done") {
+        p.status = "done";
+        if (ev.message) p.logs.push(ev.message);
+      }
     },
 
     get cov() { return this.tree ? this.tree.coverage : {}; },

@@ -1,8 +1,9 @@
 """编排管线——串联解析/理解/对齐/输出 9 步，dump 中间产物"""
 import json
+from collections import Counter
 from pathlib import Path
 from typing import Callable, Optional, Any
-from outline_extraction.models import OutlineTree, ParsedDocument, Section
+from outline_extraction.models import OutlineTree, ParsedDocument, Section, OutlineNode, SourceType
 from outline_extraction.parsing.unpack import collect_files
 from outline_extraction.parsing.extract import extract_document
 from outline_extraction.understanding.classify import classify_documents
@@ -14,6 +15,13 @@ from outline_extraction.alignment.merge import merge_requirements, compute_cover
 from outline_extraction.alignment.supplement import supplement_tree
 from outline_extraction.output.tree import finalize_ids
 
+# 来源类型 → 中文标签（日志摘要用）
+_SOURCE_LABELS = {
+    SourceType.SCORING: "评分",
+    SourceType.TECH_SPEC: "技术",
+    SourceType.BIZ_TERMS: "商务",
+}
+
 
 def run_pipeline(
     input_path: Path,
@@ -22,6 +30,7 @@ def run_pipeline(
     model_mini: str,
     run_dir: Path,
     progress_callback: Optional[Callable[[str, Any], None]] = None,
+    log_callback: Optional[Callable[[dict], None]] = None,
 ) -> OutlineTree:
     """执行完整大纲提取管线
 
@@ -31,7 +40,8 @@ def run_pipeline(
         model_main: 主模型名（定位/抽取/对齐）
         model_mini: 小模型名（分类）
         run_dir: 中间产物输出目录
-        progress_callback: 每步回调 (step_name, payload)
+        progress_callback: 每步回调 (step_name, payload)，用于 dump 等
+        log_callback: 阶段级结构化日志回调，接收 {"phase","status","message"}，供前端实时展示
     返回:
         最终 OutlineTree
     """
@@ -44,27 +54,55 @@ def run_pipeline(
             progress_callback(step, payload)
         _dump(run_dir, step, payload)
 
+    def _log(phase: str, status: str, message: str = "") -> None:
+        """发阶段级结构化日志——内部辅助
+
+        参数:
+            phase: 阶段名
+            status: start（开始）/ done（完成，带产物摘要）
+            message: 中文摘要
+        返回: 无
+        """
+        if log_callback:
+            log_callback({"phase": phase, "status": status, "message": message})
+
     # 1. 解析
+    _log("parse", "start")
     files = collect_files(Path(input_path))
     docs: list[ParsedDocument] = [extract_document(Path(p), suf) for p, suf in files]
     _emit("parse", [d.model_dump() for d in docs])
+    method_stat = ", ".join(f"{m}×{c}" for m, c in Counter(d.extract_method for d in docs).items())
+    _log("parse", "done", f"解析完成：{len(docs)} 个文件（{method_stat}）")
 
     # 2. 分类
+    _log("classify", "start")
     classes = classify_documents(docs, llm=llm, model=model_mini)
     _emit("classify", {k: v.model_dump() for k, v in classes.items()})
+    class_stat = ", ".join(f"{cls}×{cnt}" for cls, cnt in
+                           Counter(v.file_class.value for v in classes.values()).items())
+    _log("classify", "done", f"分类完成：{class_stat}")
 
     # 3. 切分（全文档汇总）
+    _log("segment", "start")
     sections = []
     for doc in docs:
         sections.extend(segment_text(doc.raw_markdown, doc_source=doc.filename))
     _emit("segment", [s.model_dump() for s in sections])
+    _log("segment", "done", f"切分完成：共 {len(sections)} 个章节块")
 
     # 4. 定位关键章节
+    _log("locate", "start")
     located = locate_sections(sections, llm=llm, model=model_main)
     _emit("locate", located.model_dump())
+    _log("locate", "done",
+         f"定位完成：投标格式 {len(located.bid_format_sections)} 处、"
+         f"评分 {len(located.scoring_sections)} 处、"
+         f"技术 {len(located.tech_spec_sections)} 处、"
+         f"商务 {len(located.business_sections)} 处")
 
     # 5. 抽显式骨架（合并所有 bid_format 章节）
     #    定位到的是章节标题，其正文常被切分到后续子章节，故收集整段（标题+全部下级）。
+    _log("extract_skeleton", "start")
     skeleton = []
     for i in located.bid_format_sections:
         sec = sections[i]
@@ -73,9 +111,11 @@ def run_pipeline(
             continue
         skeleton.extend(extract_skeleton(span, document=sec.doc_source, llm=llm, model=model_main))
     _emit("extract_skeleton", [n.model_dump() for n in skeleton])
+    _log("extract_skeleton", "done", f"骨架抽取完成：{len(skeleton)} 个顶层标题")
 
     # 6. 抽要求条目（评分+技术+商务章节）
     #    同样按整段收集；空段交由 extract_requirements 跳过。
+    _log("extract_requirements", "start")
     req_indices = located.scoring_sections + located.tech_spec_sections + located.business_sections
     req_texts = [_gather_span(sections, i) for i in req_indices]
     requirements = extract_requirements(req_texts, llm=llm, model=model_main)
@@ -83,17 +123,26 @@ def run_pipeline(
     for idx, req in enumerate(requirements):
         req.ref_id = f"R{idx}"
     _emit("extract_requirements", [r.model_dump() for r in requirements])
+    req_stat = ", ".join(f"{_SOURCE_LABELS.get(st, st.value)}×{cnt}" for st, cnt in
+                         Counter(r.source_type for r in requirements).items())
+    _log("extract_requirements", "done",
+         f"要求抽取完成：共 {len(requirements)} 条" + (f"（{req_stat}）" if req_stat else ""))
 
     # 7. 归并（覆盖率延后到最终树上统计）
+    _log("merge", "start")
     merged_tree, decisions = merge_requirements(skeleton, requirements, llm=llm, model=model_main)
     _emit("merge", {"tree": [n.model_dump() for n in merged_tree]})
+    _log("merge", "done", f"归并完成：{len(merged_tree)} 个顶层标题")
 
     # 8. 生成式兜底（游离要求）
+    _log("supplement", "start")
     floating = [r.description for r, d in _pair_floating(requirements, decisions)]
     final_nodes = supplement_tree(merged_tree, floating=floating, llm=llm, model=model_main)
     _emit("supplement", [n.model_dump() for n in final_nodes])
+    _log("supplement", "done", f"生成式补充完成：游离要求 {len(floating)} 条待安置")
 
     # 9. id 重整
+    _log("finalize", "start")
     final_nodes = finalize_ids(final_nodes)
 
     # 覆盖率：在最终树（含 supplement 安置的节点）上从树推导，绑定真实产物
@@ -106,7 +155,26 @@ def run_pipeline(
         coverage=coverage,
     )
     _emit("finalize", tree.model_dump())
+    _log("finalize", "done",
+         f"完成：大纲共 {_count_nodes(final_nodes)} 个标题；"
+         f"覆盖率 评分{coverage.mapped_scoring_items}/{coverage.total_scoring_items}、"
+         f"技术{coverage.mapped_tech_items}/{coverage.total_tech_items}、"
+         f"商务{coverage.mapped_biz_items}/{coverage.total_biz_items}")
     return tree
+
+
+def _count_nodes(nodes: list[OutlineNode]) -> int:
+    """递归统计大纲树节点总数——内部辅助
+
+    参数:
+        nodes: 顶层节点列表
+    返回:
+        含所有子级的节点总数
+    """
+    total = 0
+    for node in nodes:
+        total += 1 + _count_nodes(node.children)
+    return total
 
 
 def _pair_floating(requirements, decisions):

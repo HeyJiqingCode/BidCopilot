@@ -21,17 +21,43 @@
       <span class="ml-3 text-sm text-slate-500" x-text="fileName"></span>
     </div>
 
-    <!-- 进度区 -->
-    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6" x-show="steps.length">
-      <h2 class="font-medium mb-3">处理流程</h2>
-      <ul class="space-y-1">
-        <template x-for="s in steps" :key="s">
-          <li class="flex items-center text-sm">
-            <span class="w-2 h-2 rounded-full bg-emerald-500 mr-2"></span>
-            <span x-text="stepLabel(s)"></span>
+    <!-- 错误提示 -->
+    <div class="bg-rose-50 border border-rose-200 text-rose-700 rounded-xl p-4 mb-6 text-sm"
+         x-show="errorMsg" x-text="errorMsg"></div>
+
+    <!-- 进度区：竖向时间线 + 当前阶段高亮 -->
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6" x-show="phases.length">
+      <h2 class="font-medium mb-4">处理流程</h2>
+      <ol class="space-y-1">
+        <template x-for="(p, i) in phases" :key="p.key">
+          <li>
+            <div class="flex items-center px-2 py-1.5 rounded transition-colors"
+                 :class="p.status === 'running' ? 'bg-indigo-50' : ''">
+              <!-- 状态圆点 -->
+              <span class="w-5 h-5 mr-3 flex items-center justify-center shrink-0">
+                <template x-if="p.status === 'done'">
+                  <span class="w-4 h-4 rounded-full bg-emerald-500 text-white text-xs flex items-center justify-center">✓</span>
+                </template>
+                <template x-if="p.status === 'running'">
+                  <span class="w-4 h-4 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin"></span>
+                </template>
+                <template x-if="p.status === 'pending'">
+                  <span class="w-2 h-2 rounded-full bg-slate-300"></span>
+                </template>
+              </span>
+              <!-- 阶段名 -->
+              <span class="text-sm"
+                    :class="p.status === 'running' ? 'font-bold text-indigo-700'
+                            : (p.status === 'done' ? 'text-slate-500' : 'text-slate-300')"
+                    x-text="(i + 1) + '. ' + p.label"></span>
+            </div>
+            <!-- 该阶段详细日志（缩进） -->
+            <template x-for="line in p.logs" :key="line">
+              <div class="ml-10 text-xs text-slate-500 py-0.5" x-text="line"></div>
+            </template>
           </li>
         </template>
-      </ul>
+      </ol>
     </div>
 
     <!-- 覆盖率面板 -->
