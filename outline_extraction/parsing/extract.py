@@ -37,28 +37,61 @@ def extract_document(file_path: Path, suffix: str, cu: Any = None) -> ParsedDocu
 
 
 def _docx_to_md(file_path: Path) -> str:
-    """docx → Markdown：Heading 样式转 # 前缀——内部辅助"""
-    d = docx.Document(str(file_path))
+    """docx → Markdown：按文档真实顺序遍历段落与表格——内部辅助
+
+    段落 Heading 样式转 # 前缀；表格在其原始位置转 Markdown 表格（含表头分隔行），
+    不再统一追加到文末，从而保住表格与所属章节的相邻关系（评分表/技术参数表常为表格）。
+
+    参数:
+        file_path: docx 文件路径
+    返回:
+        统一 Markdown 文本
+    """
+    from docx.oxml.ns import qn
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+
+    doc = docx.Document(str(file_path))
     lines: list[str] = []
-    for para in d.paragraphs:
-        text = para.text.strip()
-        if not text:
-            continue
-        style = (para.style.name or "") if para.style else ""
-        if style.startswith("Heading"):
-            try:
-                level = int(style.split()[-1])
-            except (ValueError, IndexError):
-                level = 1
-            lines.append("#" * min(level, 6) + " " + text)
-        else:
-            lines.append(text)
-    # 表格转 Markdown 表格
-    for table in d.tables:
-        for row in table.rows:
-            cells = [c.text.strip().replace("\n", " ") for c in row.cells]
-            lines.append("| " + " | ".join(cells) + " |")
+    for child in doc.element.body.iterchildren():
+        if child.tag == qn("w:p"):
+            para = Paragraph(child, doc)
+            text = para.text.strip()
+            if not text:
+                continue
+            style = (para.style.name or "") if para.style else ""
+            if style.startswith("Heading"):
+                try:
+                    level = int(style.split()[-1])
+                except (ValueError, IndexError):
+                    level = 1
+                lines.append("#" * min(level, 6) + " " + text)
+            else:
+                lines.append(text)
+        elif child.tag == qn("w:tbl"):
+            table = Table(child, doc)
+            lines.extend(_table_to_md(table))
     return "\n".join(lines)
+
+
+def _table_to_md(table) -> list[str]:
+    """把一个 docx 表格转成 Markdown 表格行（含表头分隔行）——内部辅助
+
+    参数:
+        table: python-docx Table 对象
+    返回:
+        Markdown 表格行列表；空表返回空列表
+    """
+    rows = table.rows
+    if not rows:
+        return []
+    md_rows: list[str] = []
+    for r_idx, row in enumerate(rows):
+        cells = [c.text.strip().replace("\n", " ") for c in row.cells]
+        md_rows.append("| " + " | ".join(cells) + " |")
+        if r_idx == 0:
+            md_rows.append("| " + " | ".join(["---"] * len(cells)) + " |")
+    return md_rows
 
 
 def _doc_to_md(file_path: Path) -> str:

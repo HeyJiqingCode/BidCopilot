@@ -40,3 +40,38 @@ def test_extract_unknown_suffix(tmp_path):
     result = extract_document(Path(p), ".bin")
     assert result.extract_method == "skipped"
     assert result.raw_markdown == ""
+
+
+def test_docx_table_stays_in_place(tmp_path):
+    """表格应保留在其所属段落之间，而非被甩到文末"""
+    p = tmp_path / "t.docx"
+    d = docx.Document()
+    d.add_heading("评分办法", level=1)
+    d.add_paragraph("评分标准如下：")
+    tbl = d.add_table(rows=2, cols=2)
+    tbl.cell(0, 0).text = "评分项"; tbl.cell(0, 1).text = "分值"
+    tbl.cell(1, 0).text = "ISO9001"; tbl.cell(1, 1).text = "2分"
+    d.add_paragraph("以上为评分细则。")
+    d.save(p)
+    md = extract_document(Path(p), ".docx").raw_markdown
+    lines = md.splitlines()
+    idx_intro = next(i for i, l in enumerate(lines) if "评分标准如下" in l)
+    idx_table = next(i for i, l in enumerate(lines) if "ISO9001" in l)
+    idx_after = next(i for i, l in enumerate(lines) if "以上为评分细则" in l)
+    assert idx_intro < idx_table < idx_after
+    assert any(set(l.strip()) <= set("| -") and "-" in l for l in lines)
+
+
+def test_docx_table_has_header_separator(tmp_path):
+    """表格首行后应有 | --- | 分隔行"""
+    p = tmp_path / "t2.docx"
+    d = docx.Document()
+    tbl = d.add_table(rows=2, cols=3)
+    for c in range(3):
+        tbl.cell(0, c).text = f"列{c}"
+        tbl.cell(1, c).text = f"值{c}"
+    d.save(p)
+    md = extract_document(Path(p), ".docx").raw_markdown
+    lines = [l for l in md.splitlines() if l.startswith("|")]
+    assert len(lines) >= 3
+    assert "---" in lines[1]
