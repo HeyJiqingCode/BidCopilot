@@ -72,10 +72,13 @@ async def run(run_id: str) -> JSONResponse:
             input_dir = UPLOAD_STORE[run_id]
             names = sorted(p.name for p in input_dir.iterdir()) if input_dir.is_dir() else [input_dir.name]
             proj = Path(names[0]).stem if names else run_id
+            from outline_extraction.parsing.cu_client import build_cu_client
+            cu = build_cu_client(settings.cu_endpoint, settings.cu_key)
             tree = run_pipeline(
                 input_dir, llm=llm,
                 model_main=settings.model_main, model_mini=settings.model_mini,
                 run_dir=RUNS_DIR / run_id, log_callback=_log_cb, project_name=proj,
+                cu=cu,
             )
             TREE_STORE[run_id] = tree
             q.put({"event": "done"})

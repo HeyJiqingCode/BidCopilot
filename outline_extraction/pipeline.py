@@ -32,6 +32,7 @@ def run_pipeline(
     progress_callback: Optional[Callable[[str, Any], None]] = None,
     log_callback: Optional[Callable[[dict], None]] = None,
     project_name: Optional[str] = None,
+    cu: Any = None,
 ) -> OutlineTree:
     """执行完整大纲提取管线
 
@@ -44,6 +45,7 @@ def run_pipeline(
         progress_callback: 每步回调 (step_name, payload)，用于 dump 等
         log_callback: 阶段级结构化日志回调，接收 {"phase","status","message"}，供前端实时展示
         project_name: 显式项目名；缺省用 input_path.stem
+        cu: CU 客户端，缺省 None（仅本地抽取）
     返回:
         最终 OutlineTree
     """
@@ -71,7 +73,7 @@ def run_pipeline(
     # 1. 解析
     _log("parse", "start")
     files = collect_files(Path(input_path))
-    docs: list[ParsedDocument] = [extract_document(Path(p), suf) for p, suf in files]
+    docs: list[ParsedDocument] = [extract_document(Path(p), suf, cu=cu) for p, suf in files]
     _emit("parse", [d.model_dump() for d in docs])
     method_stat = ", ".join(f"{m}×{c}" for m, c in Counter(d.extract_method for d in docs).items())
     _log("parse", "done", f"解析完成：{len(docs)} 个文件（{method_stat}）")

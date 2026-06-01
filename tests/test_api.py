@@ -18,7 +18,7 @@ def test_upload_and_run(monkeypatch, tmp_path):
     """上传文件→run（后台线程）→SSE 收到 done→拿到 tree"""
     monkeypatch.setattr(api_main, "RUNS_DIR", tmp_path)
 
-    def fake_run(input_path, llm, model_main, model_mini, run_dir, log_callback, project_name=None):
+    def fake_run(input_path, llm, model_main, model_mini, run_dir, log_callback, project_name=None, cu=None):
         log_callback({"phase": "parse", "status": "start", "message": ""})
         log_callback({"phase": "parse", "status": "done", "message": "解析完成：1 个文件"})
         return _fake_tree()
@@ -51,7 +51,7 @@ def test_progress_sse_streams_phase_events(monkeypatch, tmp_path):
     """SSE 进度端点流式推送阶段日志事件"""
     monkeypatch.setattr(api_main, "RUNS_DIR", tmp_path)
 
-    def fake_run(input_path, llm, model_main, model_mini, run_dir, log_callback, project_name=None):
+    def fake_run(input_path, llm, model_main, model_mini, run_dir, log_callback, project_name=None, cu=None):
         log_callback({"phase": "classify", "status": "done", "message": "分类完成：技术规范×2"})
         log_callback({"phase": "finalize", "status": "done", "message": "完成：大纲共 10 个标题"})
         return _fake_tree()

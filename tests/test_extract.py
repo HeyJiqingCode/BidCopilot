@@ -75,3 +75,33 @@ def test_docx_table_has_header_separator(tmp_path):
     lines = [l for l in md.splitlines() if l.startswith("|")]
     assert len(lines) >= 3
     assert "---" in lines[1]
+
+
+def test_extract_docx_does_not_use_cu(tmp_path):
+    """docx 走本地抽取，不调用 CU"""
+    p = tmp_path / "a.docx"
+    d = docx.Document(); d.add_heading("第一章", level=1); d.save(p)
+    class _BoomCU:
+        def analyze(self, fp): raise AssertionError("docx 不应调用 CU")
+    result = extract_document(Path(p), ".docx", cu=_BoomCU())
+    assert result.extract_method == "docx"
+
+
+def test_extract_doc_uses_cu_when_available(tmp_path):
+    """.doc 走 CU，extract_method 标为 cu"""
+    from outline_extraction.parsing.cu_client import CUResult
+    p = tmp_path / "b.doc"; p.write_bytes(b"\xd0\xcf fake")
+    class _FakeCU:
+        def analyze(self, fp): return CUResult(markdown="# 标题\n| a | b |\n| --- | --- |", page_count=None)
+    result = extract_document(Path(p), ".doc", cu=_FakeCU())
+    assert result.extract_method == "cu"
+    assert "标题" in result.raw_markdown
+
+
+def test_extract_doc_falls_back_when_cu_fails(tmp_path):
+    """.doc 走 CU 但 CU 抛错 → 降级回本地（method=textutil 或 skipped，不崩）"""
+    p = tmp_path / "c.doc"; p.write_bytes(b"\xd0\xcf fake")
+    class _BoomCU:
+        def analyze(self, fp): raise RuntimeError("CU down")
+    result = extract_document(Path(p), ".doc", cu=_BoomCU())
+    assert result.extract_method in ("textutil", "skipped")

@@ -19,10 +19,13 @@ def main():
     target = Path(sys.argv[1])
     settings = Settings()
     llm = LLMClient(settings=settings)
+    from outline_extraction.parsing.cu_client import build_cu_client
+    cu = build_cu_client(settings.cu_endpoint, settings.cu_key)
     tree = run_pipeline(
         target, llm=llm, model_main=settings.model_main, model_mini=settings.model_mini,
         run_dir=Path("runs") / target.stem,
         progress_callback=lambda s, p: print(f"[step] {s}"),
+        cu=cu,
     )
     print("\n===== 大纲树 =====")
     _print_tree(tree.nodes)

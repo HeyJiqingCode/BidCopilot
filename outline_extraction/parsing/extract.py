@@ -12,12 +12,15 @@ _SCANNED_CHARS_PER_PAGE = 50
 
 
 def extract_document(file_path: Path, suffix: str, cu: Any = None) -> ParsedDocument:
-    """按后缀走探测优先决策链抽取文本
+    """按后缀分流抽取文本
+
+    分流规则：.docx 走本地抽取（保留 Word 原生标题层级）；其余后缀优先用 CU 出结构化
+    markdown，CU 不可用或失败时降级回本地（textutil/pdfplumber/xml）。
 
     参数:
         file_path: 文件路径
         suffix: 小写后缀
-        cu: 可选 Content Understanding 客户端；扫描件 PDF 时调用，None 则降级
+        cu: CU 客户端（None 表示未配置，走本地兜底）
     返回:
         ParsedDocument（含统一 Markdown 与抽取方式标记）
     """
@@ -25,11 +28,19 @@ def extract_document(file_path: Path, suffix: str, cu: Any = None) -> ParsedDocu
     if suffix == ".docx":
         return ParsedDocument(filename=name, raw_markdown=_docx_to_md(file_path),
                               extract_method="docx", page_count=None)
+    if cu is not None:
+        try:
+            cu_result = analyze_with_cu(file_path, cu)
+            if cu_result.markdown.strip():
+                return ParsedDocument(filename=name, raw_markdown=cu_result.markdown,
+                                      extract_method="cu", page_count=cu_result.page_count)
+        except Exception:
+            pass
     if suffix == ".doc":
         return ParsedDocument(filename=name, raw_markdown=_doc_to_md(file_path),
                               extract_method="textutil", page_count=None)
     if suffix == ".pdf":
-        return _pdf_to_doc(file_path, name, cu)
+        return _pdf_to_doc(file_path, name)
     if suffix == ".xml":
         return ParsedDocument(filename=name, raw_markdown=file_path.read_text(errors="ignore"),
                               extract_method="xml", page_count=None)
