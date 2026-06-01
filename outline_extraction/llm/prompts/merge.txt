@@ -10,8 +10,14 @@
 语义判同示例："质量管理体系认证"与"ISO9001认证证书"视为同一节点。
 
 返回：
-- tree: 归并后的完整大纲树（骨架节点 + 新增子节点；被合并的节点 sources 数组追加对应来源）
+- tree: 归并后的完整大纲树（骨架节点 + 新增子节点；被合并/挂载的节点 sources 数组追加对应来源）
 - decisions: 每个要求条目的归属判定 [{ref_id, disposition: merged_into|child_of|floating, node_id}]
+
+关于 tree 中 sources 的 ref_ids（覆盖率统计依据，务必严格遵守）：
+- 每个 SourceRef 有一个 ref_ids 字段。当你把某些要求合并/挂载到一个节点时，必须在该节点对应 SourceRef 的 ref_ids 里，逐个列全所有被该来源覆盖的要求 ref_id。
+- ref_ids 必须是逐个枚举的完整列表，如 ["R1","R2","R5"]；严禁使用区间简写（如 "R1-R5"）、严禁把多个 ref_id 塞进一个字符串（如 "R1,R2"）。
+- 凡是判定为 merged_into 或 child_of 的要求，其 ref_id 都必须真实出现在树中某个节点 SourceRef 的 ref_ids 里——覆盖率以"ref_id 是否真正出现在树中"为准，仅在 decisions 里声明而树中缺失将被记为未覆盖。
+- floating 的要求不进入树，其 ref_id 不应出现在任何 ref_ids 中。
 
 关于 decisions（务必严格遵守）：
 - 每个要求条目都带有唯一的 ref_id（如 R0、R1…）。decisions 中的 ref_id 必须原样照抄输入要求的 ref_id，不得改写、合并或省略。

@@ -84,11 +84,9 @@ def run_pipeline(
         req.ref_id = f"R{idx}"
     _emit("extract_requirements", [r.model_dump() for r in requirements])
 
-    # 7. 归并 + 覆盖率
+    # 7. 归并（覆盖率延后到最终树上统计）
     merged_tree, decisions = merge_requirements(skeleton, requirements, llm=llm, model=model_main)
-    coverage = compute_coverage(requirements, decisions)
-    _emit("merge", {"tree": [n.model_dump() for n in merged_tree],
-                    "coverage": coverage.model_dump()})
+    _emit("merge", {"tree": [n.model_dump() for n in merged_tree]})
 
     # 8. 生成式兜底（游离要求）
     floating = [r.description for r, d in _pair_floating(requirements, decisions)]
@@ -97,6 +95,9 @@ def run_pipeline(
 
     # 9. id 重整
     final_nodes = finalize_ids(final_nodes)
+
+    # 覆盖率：在最终树（含 supplement 安置的节点）上从树推导，绑定真实产物
+    coverage = compute_coverage(requirements, final_nodes)
 
     tree = OutlineTree(
         project_name=Path(input_path).stem,

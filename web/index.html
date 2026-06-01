@@ -45,6 +45,9 @@
           <div :class="cov.mapped_tech_items===cov.total_tech_items ? 'text-emerald-600' : 'text-amber-600'">
             技术条目 <span x-text="cov.mapped_tech_items + '/' + cov.total_tech_items"></span>
           </div>
+          <div :class="cov.mapped_biz_items===cov.total_biz_items ? 'text-emerald-600' : 'text-amber-600'">
+            商务 <span x-text="cov.mapped_biz_items + '/' + cov.total_biz_items"></span>
+          </div>
         </div>
       </template>
       <template x-if="tree && cov.unmapped.length">

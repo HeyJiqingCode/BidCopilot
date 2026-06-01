@@ -20,6 +20,7 @@ class SourceRef(BaseModel):
     document: str                          # 来源文件名
     location: str                          # 章节定位，如"七、技术建议书"
     quote: Optional[str] = None            # 原文摘录（可选）
+    ref_ids: list[str] = Field(default_factory=list)  # 该来源覆盖的要求 ref_id（用于从树推导覆盖率）
 
 
 class OutlineNode(BaseModel):
@@ -38,6 +39,8 @@ class CoverageReport(BaseModel):
     mapped_scoring_items: int              # 已对齐评分点数
     total_tech_items: int                  # 技术条目总数
     mapped_tech_items: int                 # 已对齐技术条目数
+    total_biz_items: int = 0               # 商务要求总数
+    mapped_biz_items: int = 0              # 已对齐商务要求数
     unmapped: list[str] = Field(default_factory=list)  # 未挂载要求（告警）
 
 
