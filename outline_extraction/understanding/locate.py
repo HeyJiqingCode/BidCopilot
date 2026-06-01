@@ -5,7 +5,7 @@ from outline_extraction.models import Section
 
 _PROMPT_PATH = Path(__file__).parent.parent / "llm" / "prompts" / "locate.txt"
 # 每个章节摘要截断长度
-_SUMMARY_CHARS = 200
+_SUMMARY_CHARS = 450  # 加长摘要，让 LLM 看到评分项/技术参数/表格等内容特征，减少漏定位
 
 
 class LocateResult(BaseModel):
