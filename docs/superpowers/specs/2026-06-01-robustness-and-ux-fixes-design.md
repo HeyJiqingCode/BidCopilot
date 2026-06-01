@@ -106,9 +106,37 @@
 
 ---
 
+## 6.5 修复 #5：Content Understanding 真正接入管线
+
+**背景（重要教训）**：Task 19 写了 `cu_client.py` + 给 `extract_document` 加了 `cu` 形参 + 优雅降级，但**管线从未把真实 CU 客户端传进去**（`pipeline` 调用 `extract_document(p, suf)` 不带 cu，cu 恒 None），且 `cu_client.analyze()` 只是接口约定、无真实现。单测全是 fake（`_FakeCU` 返回硬编码 markdown）+ 降级路径（`cu=None` 返回空）。结果：所有真实运行都悄悄走纯文本兜底，CU 从未被调用——而"绿灯 + 能跑出大纲"的表象完全掩盖了这一点。
+
+**本期修复**：让 CU 真正接入，并确保"CU 真被调用"可观测、可验证。
+
+**分流规则（已确认，普适且简单）**：
+- **`.docx`** → 保留本地抽取（`_docx_to_md` + §3.1 表格就地 + §3.2 信任原生 `#` 标题）。docx 有 Word 原生 Heading 层级，本地质量高、零成本。
+- **其余所有（`.doc` / `.pdf` / 扫描件 / `.xml` 等）** → 交给 CU 出结构化 markdown（含标题层级 + 表格）。
+  - 顺带收益：`.doc` 不再依赖 macOS 专属的 `textutil`（脆弱依赖），改由 CU 处理。
+  - `.doc` 是否被 CU 直接接受需**实测确认**；若 CU 不吃老 `.doc` 二进制格式，则 `.doc` 保留 textutil 兜底（实现时实测，不猜）。
+  - CU 调用失败 → 降级回现有本地抽取（pdfplumber / textutil），不让整条管线崩。
+
+**CU 真实 API（GA `2025-11-01`，已查证 Microsoft Learn）**：
+- 端点：`https://<resource>.cognitiveservices.azure.com`，操作 `?api-version=2025-11-01`。
+- 上传本地文件原始字节：`POST {endpoint}/contentunderstanding/analyzers/{analyzerId}:analyzeBinary`，header `Ocp-Apim-Subscription-Key: {key}`、`Content-Type: application/octet-stream`，body 为文件字节。返回 `202` + `Operation-Location` 响应头。
+- 轮询：`GET {Operation-Location}`，`status` 为 `Succeeded` 时读 `result.contents[0].markdown`（含版面+表格的 markdown）。
+- 分析器：用预置 `prebuilt-documentSearch`（RAG 优化的 markdown/版面），无需自建。
+- 依赖：用 `requests`（已查证 REST 流程），需 `uv pip install requests`。配置 `cu_endpoint`/`cu_key` 已在 `.env`。
+
+**可观测/可验证（防再次旁路）**：
+- `extract_method` 在 CU 路径下标为 `cu`（区别于 `pdf_text`/`textutil`），中间产物 `parse.json` 可见。
+- 必须有**真打 CU 服务的冒烟验证**（真实跑一个非 docx 文件，肉眼确认 `extract_method == "cu"` 且 markdown 含表格），不以 fake 单测为准。
+- 单测仍用注入 fake（不每次烧钱），但新增一个测试断言"非 docx 文件会走 cu 路径"（用 fake cu 客户端验证分流逻辑，而非验证 cu 内部）。
+
+---
+
 ## 7. 非目标 / 预案（本期不做）
 
 - **B 兜底（全文扫描补漏）**：当 A 修完后某些标的仍抽空，再设计"客观缺失信号 + 只扫剩余章节"的兜底。触发条件需谨慎（"locate 定位到了却抽空"=真 bug 该兜底；"压根没这类章节"=可能本就没有，不该乱兜，否则制造假数据、重新破坏覆盖率可信度）。**留待盲测后按需。**
+- **.doc 章节骨架增强（TOC 反推）**：CU 与 textutil 都不还原 .doc 的标题层级（实测：CU 出 0 个 `#`；textutil 转 docx 丢全部样式为 Normal）。但 .doc 经 textutil 抽出的文本里暴露了 Word 的 TOC 域（`TOC \O "1-2"`/`HYPERLINK \L "_TOC..."`/`PAGEREF`），其中含完整章节层级。预案：用 gpt-5.4-mini 从 TOC 域/全文反推 .doc 的章节骨架层级（LLM 比正则解析 TOC 更普适）。**注意：TOC 反推只改善"骨架层级"，不解决 0/0（要求在正文表格里，不在目录）；且只对 .doc 格式有效。** 留待盲测后，若 .doc 标的的大纲层级/重复确实严重再启用。
 - 不做内容生成（仍只到标题层级）。
 - 不引入重型前端框架。
 
