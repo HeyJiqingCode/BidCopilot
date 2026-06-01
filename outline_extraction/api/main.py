@@ -35,16 +35,19 @@ async def index() -> HTMLResponse:
 
 
 @app.post("/api/upload")
-async def upload(file: UploadFile = File(...)) -> JSONResponse:
-    """接收上传文件，返回 run_id"""
+async def upload(files: list[UploadFile] = File(...)) -> JSONResponse:
+    """接收一个或多个文件，全部存入 input 目录，返回 run_id 与文件名列表"""
     run_id = uuid.uuid4().hex[:12]
     dest_dir = RUNS_DIR / run_id / "input"
     dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / file.filename
-    with open(dest, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-    UPLOAD_STORE[run_id] = dest
-    return JSONResponse({"run_id": run_id, "filename": file.filename})
+    filenames: list[str] = []
+    for f in files:
+        dest = dest_dir / f.filename
+        with open(dest, "wb") as out:
+            shutil.copyfileobj(f.file, out)
+        filenames.append(f.filename)
+    UPLOAD_STORE[run_id] = dest_dir
+    return JSONResponse({"run_id": run_id, "filenames": filenames})
 
 
 # 哨兵：管线线程结束时放入队列，通知 SSE 端点收尾
@@ -66,10 +69,13 @@ async def run(run_id: str) -> JSONResponse:
         def _log_cb(event: dict) -> None:
             q.put(event)
         try:
+            input_dir = UPLOAD_STORE[run_id]
+            names = sorted(p.name for p in input_dir.iterdir()) if input_dir.is_dir() else [input_dir.name]
+            proj = Path(names[0]).stem if names else run_id
             tree = run_pipeline(
-                UPLOAD_STORE[run_id], llm=llm,
+                input_dir, llm=llm,
                 model_main=settings.model_main, model_mini=settings.model_mini,
-                run_dir=RUNS_DIR / run_id, log_callback=_log_cb,
+                run_dir=RUNS_DIR / run_id, log_callback=_log_cb, project_name=proj,
             )
             TREE_STORE[run_id] = tree
             q.put({"event": "done"})

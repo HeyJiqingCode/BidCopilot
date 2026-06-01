@@ -65,3 +65,42 @@ def test_run_pipeline_end_to_end(tmp_path):
     assert tree.nodes[0].id == "1"           # 已 finalize id
     assert "parse" in steps_seen
     assert "merge" in steps_seen
+
+
+def test_run_pipeline_accepts_explicit_project_name(tmp_path):
+    """run_pipeline 可显式指定 project_name，覆盖默认的 input_path.stem"""
+    src = tmp_path / "input"
+    src.mkdir()
+    f = src / "fmt.docx"
+    import docx
+    d = docx.Document()
+    d.add_heading("投标文件格式", level=1)
+    d.save(f)
+
+    from outline_extraction.understanding.classify import FileClass, ClassifyResult
+    from outline_extraction.understanding.locate import LocateResult
+    from outline_extraction.understanding.extract_skeleton import SkeletonResult
+    from outline_extraction.alignment.merge import MergeResult
+    from outline_extraction.alignment.supplement import SupplementResult
+    from outline_extraction.models import OutlineNode
+
+    class _ScriptedLLM:
+        def __init__(self):
+            self.script = []
+            self.idx = 0
+        def push(self, r):
+            self.script.append(r)
+        def complete(self, **kwargs):
+            r = self.script[self.idx]; self.idx += 1; return r
+
+    llm = _ScriptedLLM()
+    llm.push(ClassifyResult(file_class=FileClass.BID_FORMAT, confidence=0.9))
+    llm.push(LocateResult(bid_format_sections=[0], scoring_sections=[], tech_spec_sections=[], business_sections=[]))
+    llm.push(SkeletonResult(nodes=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
+    llm.push(MergeResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])], decisions=[]))
+    llm.push(SupplementResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
+
+    from outline_extraction.pipeline import run_pipeline
+    tree = run_pipeline(src, llm=llm, model_main="m", model_mini="mini",
+                        run_dir=tmp_path / "run", project_name="淮能项目")
+    assert tree.project_name == "淮能项目"

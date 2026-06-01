@@ -18,7 +18,7 @@ def test_upload_and_run(monkeypatch, tmp_path):
     """上传文件→run（后台线程）→SSE 收到 done→拿到 tree"""
     monkeypatch.setattr(api_main, "RUNS_DIR", tmp_path)
 
-    def fake_run(input_path, llm, model_main, model_mini, run_dir, log_callback):
+    def fake_run(input_path, llm, model_main, model_mini, run_dir, log_callback, project_name=None):
         log_callback({"phase": "parse", "status": "start", "message": ""})
         log_callback({"phase": "parse", "status": "done", "message": "解析完成：1 个文件"})
         return _fake_tree()
@@ -26,7 +26,7 @@ def test_upload_and_run(monkeypatch, tmp_path):
     monkeypatch.setattr(api_main, "run_pipeline", fake_run)
 
     client = TestClient(api_main.app)
-    files = {"file": ("a.docx", io.BytesIO(b"fakedocx"), "application/octet-stream")}
+    files = [("files", ("a.docx", io.BytesIO(b"fakedocx"), "application/octet-stream"))]
     up = client.post("/api/upload", files=files)
     assert up.status_code == 200
     run_id = up.json()["run_id"]
@@ -51,7 +51,7 @@ def test_progress_sse_streams_phase_events(monkeypatch, tmp_path):
     """SSE 进度端点流式推送阶段日志事件"""
     monkeypatch.setattr(api_main, "RUNS_DIR", tmp_path)
 
-    def fake_run(input_path, llm, model_main, model_mini, run_dir, log_callback):
+    def fake_run(input_path, llm, model_main, model_mini, run_dir, log_callback, project_name=None):
         log_callback({"phase": "classify", "status": "done", "message": "分类完成：技术规范×2"})
         log_callback({"phase": "finalize", "status": "done", "message": "完成：大纲共 10 个标题"})
         return _fake_tree()
@@ -59,7 +59,7 @@ def test_progress_sse_streams_phase_events(monkeypatch, tmp_path):
     monkeypatch.setattr(api_main, "run_pipeline", fake_run)
 
     client = TestClient(api_main.app)
-    files = {"file": ("a.docx", io.BytesIO(b"fakedocx"), "application/octet-stream")}
+    files = [("files", ("a.docx", io.BytesIO(b"fakedocx"), "application/octet-stream"))]
     run_id = client.post("/api/upload", files=files).json()["run_id"]
     client.post(f"/api/run/{run_id}")
 
@@ -83,3 +83,21 @@ def test_export_docx(monkeypatch, tmp_path):
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("application/")
     assert len(resp.content) > 0
+
+
+def test_upload_multiple_files_stores_dir(monkeypatch, tmp_path):
+    """上传多个文件应全部存入 input 目录，UPLOAD_STORE 指向该目录"""
+    monkeypatch.setattr(api_main, "RUNS_DIR", tmp_path)
+    client = TestClient(api_main.app)
+    files = [
+        ("files", ("tech.docx", io.BytesIO(b"t"), "application/octet-stream")),
+        ("files", ("biz.docx", io.BytesIO(b"b"), "application/octet-stream")),
+    ]
+    up = client.post("/api/upload", files=files)
+    assert up.status_code == 200
+    run_id = up.json()["run_id"]
+    stored = api_main.UPLOAD_STORE[run_id]
+    assert stored.is_dir()
+    names = sorted(p.name for p in stored.iterdir())
+    assert names == ["biz.docx", "tech.docx"]
+    assert up.json()["filenames"] == ["tech.docx", "biz.docx"]

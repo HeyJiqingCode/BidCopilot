@@ -31,6 +31,7 @@ def run_pipeline(
     run_dir: Path,
     progress_callback: Optional[Callable[[str, Any], None]] = None,
     log_callback: Optional[Callable[[dict], None]] = None,
+    project_name: Optional[str] = None,
 ) -> OutlineTree:
     """执行完整大纲提取管线
 
@@ -42,6 +43,7 @@ def run_pipeline(
         run_dir: 中间产物输出目录
         progress_callback: 每步回调 (step_name, payload)，用于 dump 等
         log_callback: 阶段级结构化日志回调，接收 {"phase","status","message"}，供前端实时展示
+        project_name: 显式项目名；缺省用 input_path.stem
     返回:
         最终 OutlineTree
     """
@@ -149,7 +151,7 @@ def run_pipeline(
     coverage = compute_coverage(requirements, final_nodes)
 
     tree = OutlineTree(
-        project_name=Path(input_path).stem,
+        project_name=project_name or Path(input_path).stem,
         source_documents=[d.filename for d in docs],
         nodes=final_nodes,
         coverage=coverage,
