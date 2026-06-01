@@ -16,7 +16,7 @@ const PHASE_DEFS = [
 function app() {
   return {
     runId: null,
-    fileName: "",
+    fileNames: [],
     running: false,
     phases: [],        // [{key,label,status:'pending'|'running'|'done',logs:[]}]
     errorMsg: "",
@@ -35,13 +35,13 @@ function app() {
       return m[type] || type;
     },
 
-    // 选择文件后立即上传
+    // 选择文件后立即上传（支持多文件）
     async onFile(e) {
-      const file = e.target.files[0];
-      if (!file) return;
-      this.fileName = file.name;
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+      this.fileNames = files.map(f => f.name);
       const fd = new FormData();
-      fd.append("file", file);
+      files.forEach(f => fd.append("files", f));   // 字段名 files，与后端一致
       const r = await fetch("/api/upload", { method: "POST", body: fd });
       const data = await r.json();
       this.runId = data.run_id;
@@ -94,19 +94,18 @@ function app() {
       return `/api/export/${this.runId}.docx?keep_ai_marks=${this.keepAiMarks}`;
     },
 
-    // 递归渲染节点为 HTML
+    // 递归渲染节点为 HTML（Apple 风：低饱和、克制）
     renderNode(node, depth) {
-      const pad = depth * 20;
-      // 同类型来源去重，避免徽章重复堆叠
+      const pad = depth * 18;
       const types = [...new Set((node.sources || []).map(s => s.type))];
       const badges = types
-        .map(t => `<span class="ml-2 px-1.5 py-0.5 rounded bg-slate-100 text-xs">${this.badge(t)}</span>`)
+        .map(t => `<span class="ml-2 px-1.5 py-0.5 rounded text-[11px] bg-neutral-100 text-neutral-500">${this.badge(t)}</span>`)
         .join("");
       const isAi = types.length === 1 && types[0] === "ai_suggested";
-      const bg = isAi ? "background:#fdf6ec;" : "";
-      let html = `<div style="padding-left:${pad}px;${bg}" class="py-1 border-b border-slate-50">
-        <span class="text-slate-400 mr-1">${node.id}</span>
-        <span class="font-medium">${node.title}</span>${badges}</div>`;
+      const bg = isAi ? "background:#fafafa;" : "";
+      let html = `<div style="padding-left:${pad}px;${bg}" class="py-1.5 border-b border-neutral-50">
+        <span class="text-neutral-300 mr-2 text-xs">${node.id}</span>
+        <span class="text-neutral-800">${node.title}</span>${badges}</div>`;
       for (const c of (node.children || [])) html += this.renderNode(c, depth + 1);
       return html;
     },
