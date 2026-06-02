@@ -191,11 +191,11 @@ def run_pipeline(
     #    杜绝"判了可挂但 node_id 无效、静默丢弃"的要求两头落空（详见 _unplaced_requirements）。
     #    真·无未挂要求时直接跳过：supplement 没事可做，既白等一轮、又有扰动已正确树的风险。
     _log("supplement", "start")
-    floating = [r.description for r in _unplaced_requirements(requirements, merged_tree)]
+    floating = _unplaced_requirements(requirements, merged_tree)   # 传 RequirementItem（含 ref_id），供工程回填
     if floating:
         _log("supplement", "progress", f"调用 {_pick('supplement', 'main')} 生成式补充（{len(floating)} 条游离要求）", level="detail")
         final_nodes = supplement_tree(merged_tree, floating=floating, llm=llm, model=_pick("supplement", "main"), effort=efforts.get("supplement", "high"))
-        _log("supplement", "done", f"生成式补充完成：游离要求 {len(floating)} 条待安置")
+        _log("supplement", "done", f"生成式补充完成：安置 {len(floating)} 条游离要求")
     else:
         final_nodes = merged_tree                       # 无游离要求，跳过 LLM 调用
         _log("supplement", "done", "无游离要求，跳过生成式补充")

@@ -74,9 +74,8 @@ def test_run_pipeline_end_to_end(tmp_path):
     llm.push(SkeletonResult(nodes=[OutlineNode(id="1", title="投标函", level=1, sources=[
         SourceRef(type=SourceType.SKELETON, document="fmt.docx", location="一", quote=None)], children=[])]))
     # merge 内部三阶段由 _ScriptedLLM 按 schema 兜底（规范化原样返回骨架、无要求可挂），无需 push
-    # supplement
-    llm.push(SupplementResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[
-        SourceRef(type=SourceType.SKELETON, document="fmt.docx", location="一", quote=None)], children=[])]))
+    # supplement：无游离要求会被跳过，这里 push 空判定占位（不会被消费）
+    llm.push(SupplementResult())
 
     steps_seen = []
     tree = run_pipeline(src, llm=llm, model_main="gpt-5.4", model_mini="gpt-5.4-mini",
@@ -103,7 +102,7 @@ def test_run_pipeline_accepts_explicit_project_name(tmp_path):
     llm.push(LocateResult(bid_format_sections=[0], scoring_sections=[], tech_spec_sections=[], business_sections=[]))
     llm.push(SkeletonResult(nodes=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
     # merge 三阶段由 _ScriptedLLM 按 schema 兜底
-    llm.push(SupplementResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
+    llm.push(SupplementResult())   # supplement 现只返回安置判定；这些用例无游离要求，不会被消费
 
     tree = run_pipeline(src, llm=llm, model_main="m", model_mini="mini",
                         run_dir=tmp_path / "run", project_name="淮能项目")
@@ -125,7 +124,7 @@ def test_pipeline_emits_detail_level_logs(tmp_path):
     llm.push(LocateResult(bid_format_sections=[0], scoring_sections=[], tech_spec_sections=[], business_sections=[]))
     llm.push(SkeletonResult(nodes=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
     # merge 三阶段由 _ScriptedLLM 按 schema 兜底
-    llm.push(SupplementResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
+    llm.push(SupplementResult())   # supplement 现只返回安置判定；这些用例无游离要求，不会被消费
 
     events = []
     run_pipeline(src, llm=llm, model_main="gpt-5.4", model_mini="gpt-5.4-mini",
@@ -160,7 +159,7 @@ def test_pipeline_detail_logs_cover_main_phases(tmp_path):
     llm.push(SkeletonResult(nodes=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
     llm.push(RequirementsResult(items=[RequirementItem(ref_id="", description="x", source_type=SourceType.SCORING, location="评1", suggested_title="X")]))
     # merge 三阶段由 _ScriptedLLM 按 schema 兜底
-    llm.push(SupplementResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
+    llm.push(SupplementResult())   # supplement 现只返回安置判定；这些用例无游离要求，不会被消费
 
     events = []
     run_pipeline(src, llm=llm, model_main="gpt-5.4", model_mini="gpt-5.4-mini",
@@ -187,7 +186,7 @@ def _push_minimal(llm):
     llm.push(ClassifyResult(file_class=FileClass.BID_FORMAT, confidence=0.9))
     llm.push(LocateResult(bid_format_sections=[0], scoring_sections=[], tech_spec_sections=[], business_sections=[]))
     llm.push(SkeletonResult(nodes=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
-    llm.push(SupplementResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
+    llm.push(SupplementResult())   # supplement 现只返回安置判定；这些用例无游离要求，不会被消费
 
 
 def _make_fmt_docx(tmp_path):
@@ -209,8 +208,12 @@ def test_pipeline_unplaced_req_goes_to_supplement_even_if_not_floating(tmp_path)
     src = _make_fmt_docx(tmp_path)
     seen_floating = []
 
+    from bid_copilot.understanding.alignment.supplement import (
+        SupplementDecision, SupplementDisposition,
+    )
+
     class _InvalidNodeIdLLM(_ScriptedLLM):
-        """attach 阶段对要求给出 child_of 但 node_id 无效；记录 supplement 收到的 floating"""
+        """attach 阶段对要求给出 child_of 但 node_id 无效；supplement 阶段把它正确安置到 "1"。"""
         def complete(self, **kwargs):
             schema = kwargs.get("schema")
             if schema is _AttachResult:
@@ -220,8 +223,11 @@ def test_pipeline_unplaced_req_goes_to_supplement_even_if_not_floating(tmp_path)
             if schema is SupplementResult:
                 import json
                 payload = json.loads(kwargs.get("input_content", "{}"))
-                seen_floating.extend(payload.get("floating_requirements", []))
-                return SupplementResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])])
+                # 新 schema：floating_requirements 是对象列表，记录其 description
+                seen_floating.extend(f["description"] for f in payload.get("floating_requirements", []))
+                # 把 R0 安置到已有节点 "1"（ref_id 由工程回填）
+                return SupplementResult(decisions=[
+                    SupplementDecision(ref_id="R0", disposition=SupplementDisposition.MERGED_INTO, node_id="1")])
             return super().complete(**kwargs)
 
     llm = _InvalidNodeIdLLM()
@@ -232,10 +238,13 @@ def test_pipeline_unplaced_req_goes_to_supplement_even_if_not_floating(tmp_path)
         ref_id="", description="履约保证金退还承诺", source_type=SourceType.BIZ_TERMS,
         location="22.3", suggested_title="履约保证金")]))
 
-    run_pipeline(src, llm=llm, model_main="gpt-5.4", model_mini="gpt-5.4-mini", run_dir=tmp_path / "run")
+    tree = run_pipeline(src, llm=llm, model_main="gpt-5.4", model_mini="gpt-5.4-mini", run_dir=tmp_path / "run")
 
     # 该要求未挂进树（node_id 无效），但被识别为未安置 → 交给了 supplement
     assert "履约保证金退还承诺" in seen_floating
+    # 且 supplement 工程回填后，覆盖率不再漏它（端到端验证 A 修复）
+    assert tree.coverage.mapped_biz_items == tree.coverage.total_biz_items
+    assert "履约保证金退还承诺" not in tree.coverage.unmapped
 
 
 def test_pipeline_skips_supplement_when_no_floating(tmp_path):
