@@ -35,6 +35,7 @@ def run_pipeline(
     cu: Any = None,
     efforts: Optional[dict] = None,
     max_concurrency: int = 5,
+    models: Optional[dict] = None,
 ) -> OutlineTree:
     """执行完整大纲提取管线
 
@@ -51,10 +52,19 @@ def run_pipeline(
         efforts: 各步推理强度字典 {classify,locate,skeleton,requirements,merge,supplement}；
                  缺省 None 时各步用自身默认值（维持现状）
         max_concurrency: 并行上限（extract 章节并行 + merge 阶段B 分批并行共用），默认 5
+        models: 各步模型档位字典 {classify,locate,...: "main"|"mini"}；缺省时 classify 用 mini、其余 main
     返回:
         最终 OutlineTree
     """
     efforts = efforts or {}
+    models = models or {}
+
+    # 档位（main/mini）→ 实际模型名。各步默认：classify=mini，其余 main
+    def _pick(step: str, default_tier: str) -> str:
+        """按步骤档位选模型名——内部辅助；tier 为 'mini' 用 model_mini，否则 model_main"""
+        tier = models.get(step, default_tier)
+        return model_mini if tier == "mini" else model_main
+
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -96,7 +106,7 @@ def run_pipeline(
     _log("classify", "start")
     for i, doc in enumerate(docs, 1):
         _log("classify", "progress", f"调用 {model_mini} 分类《{doc.filename}》（{i}/{len(docs)}）", level="detail")
-    classes = classify_documents(docs, llm=llm, model=model_mini, effort=efforts.get("classify", "low"))
+    classes = classify_documents(docs, llm=llm, model=_pick("classify", "mini"), effort=efforts.get("classify", "low"))
     _emit("classify", {k: v.model_dump() for k, v in classes.items()})
     class_stat = ", ".join(f"{cls}×{cnt}" for cls, cnt in
                            Counter(v.file_class.value for v in classes.values()).items())
@@ -113,7 +123,7 @@ def run_pipeline(
     # 4. 定位关键章节
     _log("locate", "start")
     _log("locate", "progress", f"调用 {model_main} 定位关键章节（{len(sections)} 个章节块）", level="detail")
-    located = locate_sections(sections, llm=llm, model=model_main, effort=efforts.get("locate", "medium"))
+    located = locate_sections(sections, llm=llm, model=_pick("locate", "main"), effort=efforts.get("locate", "medium"))
     _emit("locate", located.model_dump())
     _log("locate", "done",
          f"定位完成：投标格式 {len(located.bid_format_sections)} 处、"
@@ -133,7 +143,7 @@ def run_pipeline(
             continue
         _log("extract_skeleton", "progress",
              f"调用 {model_main} 抽取骨架（bid_format 章节 {_k}/{_bid_n}：{sec.title[:20]}）", level="detail")
-        skeleton.extend(extract_skeleton(span, document=sec.doc_source, llm=llm, model=model_main, effort=efforts.get("skeleton", "medium")))
+        skeleton.extend(extract_skeleton(span, document=sec.doc_source, llm=llm, model=_pick("skeleton", "main"), effort=efforts.get("skeleton", "medium")))
     _emit("extract_skeleton", [n.model_dump() for n in skeleton])
     _log("extract_skeleton", "done", f"骨架抽取完成：{len(skeleton)} 个顶层标题")
 
@@ -144,7 +154,7 @@ def run_pipeline(
     req_texts = [_gather_span(sections, i) for i in req_indices]
     _log("extract_requirements", "progress",
          f"调用 {model_main} 抽取要求（{len(req_texts)} 个关键章节）", level="detail")
-    requirements = extract_requirements(req_texts, llm=llm, model=model_main, effort=efforts.get("requirements", "medium"), max_concurrency=max_concurrency)
+    requirements = extract_requirements(req_texts, llm=llm, model=_pick("requirements", "main"), effort=efforts.get("requirements", "medium"), max_concurrency=max_concurrency)
     # 赋稳定唯一 ref_id，作为归并/覆盖率的关联键（location 非唯一、易被 LLM 改写）
     for idx, req in enumerate(requirements):
         req.ref_id = f"R{idx}"
@@ -157,7 +167,7 @@ def run_pipeline(
     # 7. 归并（覆盖率延后到最终树上统计）
     _log("merge", "start")
     _log("merge", "progress", f"调用 {model_main} 归并 {len(requirements)} 条要求到骨架", level="detail")
-    merged_tree, decisions = merge_requirements(skeleton, requirements, llm=llm, model=model_main, effort=efforts.get("merge", "high"), max_concurrency=max_concurrency)
+    merged_tree, decisions = merge_requirements(skeleton, requirements, llm=llm, model=_pick("merge", "main"), effort=efforts.get("merge", "high"), max_concurrency=max_concurrency)
     _emit("merge", {"tree": [n.model_dump() for n in merged_tree]})
     _log("merge", "done", f"归并完成：{len(merged_tree)} 个顶层标题")
 
@@ -165,7 +175,7 @@ def run_pipeline(
     _log("supplement", "start")
     floating = [r.description for r, d in _pair_floating(requirements, decisions)]
     _log("supplement", "progress", f"调用 {model_main} 生成式补充（{len(floating)} 条游离要求）", level="detail")
-    final_nodes = supplement_tree(merged_tree, floating=floating, llm=llm, model=model_main, effort=efforts.get("supplement", "high"))
+    final_nodes = supplement_tree(merged_tree, floating=floating, llm=llm, model=_pick("supplement", "main"), effort=efforts.get("supplement", "high"))
     _emit("supplement", [n.model_dump() for n in final_nodes])
     _log("supplement", "done", f"生成式补充完成：游离要求 {len(floating)} 条待安置")
 

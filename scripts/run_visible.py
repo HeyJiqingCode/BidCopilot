@@ -35,6 +35,14 @@ def main():
             "supplement": settings.effort_supplement,
         },
         max_concurrency=settings.max_concurrency,
+        models={
+            "classify": settings.model_classify,
+            "locate": settings.model_locate,
+            "skeleton": settings.model_skeleton,
+            "requirements": settings.model_requirements,
+            "merge": settings.model_merge,
+            "supplement": settings.model_supplement,
+        },
     )
     print("\n===== 大纲树 =====")
     _print_tree(tree.nodes)

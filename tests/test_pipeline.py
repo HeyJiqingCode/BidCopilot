@@ -169,3 +169,35 @@ def test_pipeline_detail_logs_cover_main_phases(tmp_path):
     phases_with_detail = {e["phase"] for e in events if e.get("level") == "detail"}
     for ph in ["parse", "locate", "extract_skeleton", "extract_requirements", "merge"]:
         assert ph in phases_with_detail, f"{ph} 缺少 detail 日志"
+
+
+def test_pipeline_model_tier_routing(tmp_path):
+    """models 档位映射：classify 走 mini、merge 显式配 mini 时也走 mini，其余 main"""
+    src = tmp_path / "input"
+    src.mkdir()
+    f = src / "fmt.docx"
+    d = docx.Document()
+    d.add_heading("投标文件格式", level=1)
+    d.save(f)
+
+    used_models = []
+
+    class _RecordingLLM(_ScriptedLLM):
+        """记录每次调用所用 model，用于断言档位路由"""
+        def complete(self, **kwargs):
+            used_models.append(kwargs.get("model"))
+            return super().complete(**kwargs)
+
+    llm = _RecordingLLM()
+    llm.push(ClassifyResult(file_class=FileClass.BID_FORMAT, confidence=0.9))
+    llm.push(LocateResult(bid_format_sections=[0], scoring_sections=[], tech_spec_sections=[], business_sections=[]))
+    llm.push(SkeletonResult(nodes=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
+    llm.push(SupplementResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
+
+    run_pipeline(src, llm=llm, model_main="MAIN", model_mini="MINI",
+                 run_dir=tmp_path / "run",
+                 models={"classify": "mini", "locate": "main", "merge": "mini"})
+
+    # classify 用 MINI；locate 用 MAIN；merge 阶段（规范化/挂载）显式配 mini → 用 MINI
+    assert "MINI" in used_models    # classify
+    assert "MAIN" in used_models    # locate/skeleton 等

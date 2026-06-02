@@ -33,6 +33,13 @@ class Settings:
     local_auth_cookie_name: str = field(default_factory=lambda: os.getenv("LOCAL_AUTH_COOKIE_NAME", "bid_copilot_session"))
     # 并行调用上限（extract 章节并行 + merge 阶段B 分批并行共用）
     max_concurrency: int = field(default_factory=lambda: int(os.getenv("MAX_CONCURRENCY", "5")))
+    # 各管线步骤的模型档位（main/mini）；默认 classify=mini、其余 main，可经 env 切换试 mini 提速
+    model_classify: str = field(default_factory=lambda: os.getenv("MODEL_CLASSIFY", "mini"))
+    model_locate: str = field(default_factory=lambda: os.getenv("MODEL_LOCATE", "main"))
+    model_skeleton: str = field(default_factory=lambda: os.getenv("MODEL_SKELETON", "main"))
+    model_requirements: str = field(default_factory=lambda: os.getenv("MODEL_REQUIREMENTS", "main"))
+    model_merge: str = field(default_factory=lambda: os.getenv("MODEL_MERGE", "main"))
+    model_supplement: str = field(default_factory=lambda: os.getenv("MODEL_SUPPLEMENT", "main"))
     # 各管线步骤的推理强度 effort（low/medium/high）；默认维持各步现状，可经 env 覆盖
     effort_classify: str = field(default_factory=lambda: os.getenv("EFFORT_CLASSIFY", "low"))
     effort_locate: str = field(default_factory=lambda: os.getenv("EFFORT_LOCATE", "medium"))
