@@ -200,6 +200,44 @@ def _make_fmt_docx(tmp_path):
     return src
 
 
+def test_pipeline_unplaced_req_goes_to_supplement_even_if_not_floating(tmp_path):
+    """两头落空防御：merge 判要求可挂(child_of)但 node_id 无效→未进树时，该要求仍须交 supplement 兜底
+
+    复现原 run R17/R18 的丢失路径：disposition 非 floating，但因 node_id 无效未真正回填进树。
+    旧逻辑按 disposition 挑 floating 会漏掉它；修复后按"是否真在树里"判定，必须把它交给 supplement。
+    """
+    src = _make_fmt_docx(tmp_path)
+    seen_floating = []
+
+    class _InvalidNodeIdLLM(_ScriptedLLM):
+        """attach 阶段对要求给出 child_of 但 node_id 无效；记录 supplement 收到的 floating"""
+        def complete(self, **kwargs):
+            schema = kwargs.get("schema")
+            if schema is _AttachResult:
+                # 判 R0 可挂到一个不存在的节点 → 工程回填会静默跳过 → R0 不进树
+                return _AttachResult(decisions=[
+                    MergeDecision(ref_id="R0", disposition=Disposition.CHILD_OF, node_id="NOPE_INVALID")])
+            if schema is SupplementResult:
+                import json
+                payload = json.loads(kwargs.get("input_content", "{}"))
+                seen_floating.extend(payload.get("floating_requirements", []))
+                return SupplementResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])])
+            return super().complete(**kwargs)
+
+    llm = _InvalidNodeIdLLM()
+    llm.push(ClassifyResult(file_class=FileClass.BID_FORMAT, confidence=0.9))
+    llm.push(LocateResult(bid_format_sections=[0], scoring_sections=[0], tech_spec_sections=[], business_sections=[]))
+    llm.push(SkeletonResult(nodes=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
+    llm.push(RequirementsResult(items=[RequirementItem(
+        ref_id="", description="履约保证金退还承诺", source_type=SourceType.BIZ_TERMS,
+        location="22.3", suggested_title="履约保证金")]))
+
+    run_pipeline(src, llm=llm, model_main="gpt-5.4", model_mini="gpt-5.4-mini", run_dir=tmp_path / "run")
+
+    # 该要求未挂进树（node_id 无效），但被识别为未安置 → 交给了 supplement
+    assert "履约保证金退还承诺" in seen_floating
+
+
 def test_pipeline_skips_supplement_when_no_floating(tmp_path):
     """无游离要求时跳过生成式补充——不发起 SupplementResult 的 LLM 调用"""
     src = _make_fmt_docx(tmp_path)

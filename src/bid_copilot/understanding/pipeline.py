@@ -11,7 +11,7 @@ from bid_copilot.understanding.segment import segment_text
 from bid_copilot.understanding.locate import locate_sections
 from bid_copilot.understanding.extract_skeleton import extract_skeleton
 from bid_copilot.understanding.extract_requirements import extract_requirements
-from bid_copilot.understanding.alignment.merge import merge_requirements, compute_coverage, Disposition
+from bid_copilot.understanding.alignment.merge import merge_requirements, compute_coverage, _collect_ref_ids
 from bid_copilot.understanding.alignment.supplement import supplement_tree
 from bid_copilot.understanding.output.tree import finalize_ids
 
@@ -181,15 +181,17 @@ def run_pipeline(
     # 7. 归并（覆盖率延后到最终树上统计）
     _log("merge", "start")
     _log("merge", "progress", f"调用 {_pick('merge', 'main')} 归并 {len(requirements)} 条要求到骨架", level="detail")
-    merged_tree, decisions = merge_requirements(skeleton, requirements, llm=llm, model=_pick("merge", "main"), effort=efforts.get("merge", "high"), max_concurrency=max_concurrency)
+    # decisions 不再用于挑 floating（改按树的真相判定，见 _unplaced_requirements），故忽略
+    merged_tree, _decisions = merge_requirements(skeleton, requirements, llm=llm, model=_pick("merge", "main"), effort=efforts.get("merge", "high"), max_concurrency=max_concurrency)
     _emit("merge", {"tree": [n.model_dump() for n in merged_tree]})
     _log("merge", "done", f"归并完成：{len(merged_tree)} 个顶层标题")
 
-    # 8. 生成式兜底（游离要求）
-    #    无游离要求时直接跳过：supplement 只负责安置游离要求，0 条时这次 LLM 调用没事可做，
-    #    既白等一轮、又有让模型扰动已正确归并树的风险，故短路返回原树。
+    # 8. 生成式兜底（安置实际未挂进树的要求）
+    #    "未挂进树"按归并树的真相判定（_collect_ref_ids），而非 merge 的 disposition——
+    #    杜绝"判了可挂但 node_id 无效、静默丢弃"的要求两头落空（详见 _unplaced_requirements）。
+    #    真·无未挂要求时直接跳过：supplement 没事可做，既白等一轮、又有扰动已正确树的风险。
     _log("supplement", "start")
-    floating = [r.description for r, d in _pair_floating(requirements, decisions)]
+    floating = [r.description for r in _unplaced_requirements(requirements, merged_tree)]
     if floating:
         _log("supplement", "progress", f"调用 {_pick('supplement', 'main')} 生成式补充（{len(floating)} 条游离要求）", level="detail")
         final_nodes = supplement_tree(merged_tree, floating=floating, llm=llm, model=_pick("supplement", "main"), effort=efforts.get("supplement", "high"))
@@ -235,22 +237,25 @@ def _count_nodes(nodes: list[OutlineNode]) -> int:
     return total
 
 
-def _pair_floating(requirements, decisions):
-    """配对出 floating 要求——内部辅助
+def _unplaced_requirements(requirements: list, merged_tree: list[OutlineNode]) -> list:
+    """挑出"实际没挂进归并树"的要求——内部辅助，供 supplement 兜底
+
+    为什么按树的真相判定、而非按 decisions 的 disposition：
+    merge 的判定有随机性，偶尔会把某条要求判成 merged_into/child_of 但 node_id
+    无效（LLM 臆造/飘移），工程回填时静默跳过——这条要求既没真正进树、disposition
+    又不是 floating，于是旧逻辑（看 disposition）不会把它交给 supplement，导致它
+    两头落空、彻底丢失（漏项=废标）。改为：凡 ref_id 未真实出现在树 sources.ref_ids
+    中的要求，都视为待安置，交 supplement。与 compute_coverage 同一真相源
+    （_collect_ref_ids），二者自洽。
 
     参数:
-        requirements: 要求列表
-        decisions: 归属判定
+        requirements: 全部要求条目（带稳定 ref_id）
+        merged_tree: 归并后的树顶层节点
     返回:
-        [(requirement, decision)] 仅 floating 项
+        未挂进树的要求列表
     """
-    disp_by_ref = {d.ref_id: d for d in decisions}
-    pairs = []
-    for req in requirements:
-        d = disp_by_ref.get(req.ref_id)
-        if d is None or d.disposition == Disposition.FLOATING:
-            pairs.append((req, d))
-    return pairs
+    mapped = _collect_ref_ids(merged_tree)
+    return [r for r in requirements if r.ref_id not in mapped]
 
 
 def _gather_span(sections: list[Section], start: int) -> str:
