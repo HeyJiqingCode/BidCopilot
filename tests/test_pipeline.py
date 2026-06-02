@@ -171,33 +171,63 @@ def test_pipeline_detail_logs_cover_main_phases(tmp_path):
         assert ph in phases_with_detail, f"{ph} 缺少 detail 日志"
 
 
-def test_pipeline_model_tier_routing(tmp_path):
-    """models 档位映射：classify 走 mini、merge 显式配 mini 时也走 mini，其余 main"""
-    src = tmp_path / "input"
-    src.mkdir()
-    f = src / "fmt.docx"
-    d = docx.Document()
-    d.add_heading("投标文件格式", level=1)
-    d.save(f)
+class _RecordingLLM(_ScriptedLLM):
+    """记录每次调用所用 model，用于断言档位路由——测试辅助"""
+    def __init__(self, sink):
+        super().__init__()
+        self._sink = sink
 
-    used_models = []
+    def complete(self, **kwargs):
+        self._sink.append(kwargs.get("model"))
+        return super().complete(**kwargs)
 
-    class _RecordingLLM(_ScriptedLLM):
-        """记录每次调用所用 model，用于断言档位路由"""
-        def complete(self, **kwargs):
-            used_models.append(kwargs.get("model"))
-            return super().complete(**kwargs)
 
-    llm = _RecordingLLM()
+def _push_minimal(llm):
+    """给 scripted LLM 压入最小可跑通脚本（classify/locate/skeleton/supplement）——测试辅助"""
     llm.push(ClassifyResult(file_class=FileClass.BID_FORMAT, confidence=0.9))
     llm.push(LocateResult(bid_format_sections=[0], scoring_sections=[], tech_spec_sections=[], business_sections=[]))
     llm.push(SkeletonResult(nodes=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
     llm.push(SupplementResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
 
+
+def _make_fmt_docx(tmp_path):
+    """造一个仅含投标文件格式标题的最小 docx 输入目录——测试辅助"""
+    src = tmp_path / "input"
+    src.mkdir()
+    d = docx.Document()
+    d.add_heading("投标文件格式", level=1)
+    d.save(src / "fmt.docx")
+    return src
+
+
+def test_pipeline_model_tier_routing(tmp_path):
+    """models 档位映射：classify 走 mini、merge 显式配 mini 时也走 mini、显式 nano 走 NANO，其余 main"""
+    src = _make_fmt_docx(tmp_path)
+    used_models = []
+    llm = _RecordingLLM(used_models)
+    _push_minimal(llm)
+
+    run_pipeline(src, llm=llm, model_main="MAIN", model_mini="MINI", model_nano="NANO",
+                 run_dir=tmp_path / "run",
+                 models={"classify": "mini", "locate": "main", "merge": "mini", "skeleton": "nano"})
+
+    # classify 用 MINI；locate 用 MAIN；merge 显式配 mini → MINI；skeleton 显式配 nano → NANO
+    assert "MINI" in used_models    # classify / merge
+    assert "MAIN" in used_models    # locate 等
+    assert "NANO" in used_models    # skeleton 显式 nano 档
+
+
+def test_pipeline_nano_falls_back_to_mini_when_unset(tmp_path):
+    """nano 档但未配置 model_nano（空串）时回退到 model_mini，不传空模型名"""
+    src = _make_fmt_docx(tmp_path)
+    used_models = []
+    llm = _RecordingLLM(used_models)
+    _push_minimal(llm)
+
+    # skeleton 配 nano，但 model_nano 缺省为空串 → 应回退用 MINI
     run_pipeline(src, llm=llm, model_main="MAIN", model_mini="MINI",
                  run_dir=tmp_path / "run",
-                 models={"classify": "mini", "locate": "main", "merge": "mini"})
+                 models={"skeleton": "nano"})
 
-    # classify 用 MINI；locate 用 MAIN；merge 阶段（规范化/挂载）显式配 mini → 用 MINI
-    assert "MINI" in used_models    # classify
-    assert "MAIN" in used_models    # locate/skeleton 等
+    assert "" not in used_models    # 不应出现空模型名
+    assert "MINI" in used_models    # nano 回退到 mini

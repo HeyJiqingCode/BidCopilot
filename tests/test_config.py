@@ -9,11 +9,13 @@ def test_settings_from_env(monkeypatch):
     monkeypatch.setenv("AOAI_BASE_URL", "https://x/openai/v1/")
     monkeypatch.setenv("MODEL_MAIN", "gpt-5.4")
     monkeypatch.setenv("MODEL_MINI", "gpt-5.4-mini")
+    monkeypatch.setenv("MODEL_NANO", "gpt-5.4-nano")
     s = Settings()
     assert s.api_key == "k123"
     assert s.base_url.endswith("/openai/v1/")
     assert s.model_main == "gpt-5.4"
     assert s.model_mini == "gpt-5.4-mini"
+    assert s.model_nano == "gpt-5.4-nano"
 
 
 def test_settings_cu_optional(monkeypatch):

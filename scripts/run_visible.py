@@ -23,6 +23,7 @@ def main():
     cu = build_cu_client(settings.cu_endpoint, settings.cu_key)
     tree = run_pipeline(
         target, llm=llm, model_main=settings.model_main, model_mini=settings.model_mini,
+        model_nano=settings.model_nano,
         run_dir=Path("runs") / target.stem,
         progress_callback=lambda s, p: print(f"[step] {s}"),
         cu=cu,

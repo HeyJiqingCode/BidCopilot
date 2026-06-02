@@ -29,6 +29,7 @@ def run_pipeline(
     model_main: str,
     model_mini: str,
     run_dir: Path,
+    model_nano: str = "",
     progress_callback: Optional[Callable[[str, Any], None]] = None,
     log_callback: Optional[Callable[[dict], None]] = None,
     project_name: Optional[str] = None,
@@ -45,6 +46,7 @@ def run_pipeline(
         model_main: 主模型名（定位/抽取/对齐）
         model_mini: 小模型名（分类）
         run_dir: 中间产物输出目录
+        model_nano: 最轻量模型名（nano 档）；缺省空串时 nano 档回退到 model_mini
         progress_callback: 每步回调 (step_name, payload)，用于 dump 等
         log_callback: 阶段级结构化日志回调，接收 {"phase","status","message","level"}，供前端实时展示
         project_name: 显式项目名；缺省用 input_path.stem
@@ -59,11 +61,23 @@ def run_pipeline(
     efforts = efforts or {}
     models = models or {}
 
-    # 档位（main/mini）→ 实际模型名。各步默认：classify=mini，其余 main
+    # 档位（main/mini/nano）→ 实际模型名。各步默认：classify=mini，其余 main
+    # nano 档：用 model_nano；若未配置 model_nano（空串）则回退到 model_mini，避免传空模型名
     def _pick(step: str, default_tier: str) -> str:
-        """按步骤档位选模型名——内部辅助；tier 为 'mini' 用 model_mini，否则 model_main"""
+        """按步骤档位选模型名——内部辅助
+
+        参数:
+            step: 步骤名（classify/locate/.../supplement）
+            default_tier: 该步默认档位（main/mini/nano）
+        返回:
+            档位对应的实际模型名；nano 档未配置时回退 mini
+        """
         tier = models.get(step, default_tier)
-        return model_mini if tier == "mini" else model_main
+        if tier == "nano":
+            return model_nano or model_mini
+        if tier == "mini":
+            return model_mini
+        return model_main
 
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)

@@ -102,6 +102,7 @@ async def run(run_id: str) -> JSONResponse:
             tree = run_pipeline(
                 input_dir, llm=llm,
                 model_main=settings.model_main, model_mini=settings.model_mini,
+                model_nano=settings.model_nano,
                 run_dir=run_dir, log_callback=_log_cb, project_name=proj,
                 cu=cu,
                 efforts={

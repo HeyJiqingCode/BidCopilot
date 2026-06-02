@@ -17,6 +17,8 @@ class Settings:
     model_main: str = field(default_factory=lambda: os.getenv("MODEL_MAIN", "gpt-5.4"))
     # 轻量模型部署名
     model_mini: str = field(default_factory=lambda: os.getenv("MODEL_MINI", "gpt-5.4-mini"))
+    # 最轻量模型部署名（nano 档，最快最省，适合极简任务/用户自测提速）
+    model_nano: str = field(default_factory=lambda: os.getenv("MODEL_NANO", "gpt-5.4-nano"))
     # Content Understanding 端点（可选，缺省为空字符串）
     cu_endpoint: str = field(default_factory=lambda: os.getenv("CU_ENDPOINT", ""))
     # Content Understanding 密钥（可选，缺省为空字符串）
@@ -33,7 +35,7 @@ class Settings:
     local_auth_cookie_name: str = field(default_factory=lambda: os.getenv("LOCAL_AUTH_COOKIE_NAME", "bid_copilot_session"))
     # 并行调用上限（extract 章节并行 + merge 阶段B 分批并行共用）
     max_concurrency: int = field(default_factory=lambda: int(os.getenv("MAX_CONCURRENCY", "5")))
-    # 各管线步骤的模型档位（main/mini）；默认 classify=mini、其余 main，可经 env 切换试 mini 提速
+    # 各管线步骤的模型档位（main/mini/nano）；默认 classify=mini、其余 main，可经 env 切换试 mini/nano 提速
     model_classify: str = field(default_factory=lambda: os.getenv("MODEL_CLASSIFY", "mini"))
     model_locate: str = field(default_factory=lambda: os.getenv("MODEL_LOCATE", "main"))
     model_skeleton: str = field(default_factory=lambda: os.getenv("MODEL_SKELETON", "main"))
