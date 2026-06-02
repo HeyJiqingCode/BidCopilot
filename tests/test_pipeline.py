@@ -149,3 +149,46 @@ def test_pipeline_emits_detail_level_logs(tmp_path):
     assert len(details) >= 1
     # classify 阶段应有提到分类的 detail 日志
     assert any(e["phase"] == "classify" and e["level"] == "detail" for e in events)
+
+
+def test_pipeline_detail_logs_cover_main_phases(tmp_path):
+    """parse/locate/extract_skeleton/extract_requirements/merge 都应有 detail 日志"""
+    src = tmp_path / "input"
+    src.mkdir()
+    f = src / "fmt.docx"
+    import docx
+    d = docx.Document()
+    d.add_heading("投标文件格式", level=1)
+    d.add_paragraph("一、商务投标文件")
+    d.save(f)
+
+    from outline_extraction.understanding.classify import FileClass, ClassifyResult
+    from outline_extraction.understanding.locate import LocateResult
+    from outline_extraction.understanding.extract_skeleton import SkeletonResult
+    from outline_extraction.understanding.extract_requirements import RequirementsResult
+    from outline_extraction.alignment.merge import MergeResult
+    from outline_extraction.alignment.supplement import SupplementResult
+    from outline_extraction.models import OutlineNode, RequirementItem, SourceType
+
+    class _ScriptedLLM:
+        def __init__(self): self.script = []; self.idx = 0
+        def push(self, r): self.script.append(r)
+        def complete(self, **kwargs):
+            r = self.script[self.idx]; self.idx += 1; return r
+
+    llm = _ScriptedLLM()
+    llm.push(ClassifyResult(file_class=FileClass.BID_FORMAT, confidence=0.9))
+    llm.push(LocateResult(bid_format_sections=[0], scoring_sections=[0], tech_spec_sections=[], business_sections=[]))
+    llm.push(SkeletonResult(nodes=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
+    llm.push(RequirementsResult(items=[RequirementItem(ref_id="", description="x", source_type=SourceType.SCORING, location="评1", suggested_title="X")]))
+    llm.push(MergeResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])], decisions=[]))
+    llm.push(SupplementResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
+
+    events = []
+    from outline_extraction.pipeline import run_pipeline
+    run_pipeline(src, llm=llm, model_main="gpt-5.4", model_mini="gpt-5.4-mini",
+                 run_dir=tmp_path / "run", log_callback=lambda e: events.append(e))
+
+    phases_with_detail = {e["phase"] for e in events if e.get("level") == "detail"}
+    for ph in ["parse", "locate", "extract_skeleton", "extract_requirements", "merge"]:
+        assert ph in phases_with_detail, f"{ph} 缺少 detail 日志"
