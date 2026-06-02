@@ -28,6 +28,24 @@ UPLOAD_STORE: dict[str, Path] = {}        # run_id → 上传文件/目录路径
 TREE_STORE: dict[str, OutlineTree] = {}   # run_id → 结果树
 PROGRESS_QUEUES: dict[str, "queue.Queue"] = {}  # run_id → 进度队列
 
+# 全局运行态事件广播：worker 线程在 run 状态变化（running/done/error）时广播，
+# /api/events 的 SSE 监听者收到后刷新侧栏——事件驱动，替代前端定时轮询 /api/runs。
+STATUS_LISTENERS: set["queue.Queue"] = set()
+
+
+def _broadcast_status(run_id: str, status: str) -> None:
+    """向所有 /api/events 监听者广播一条运行态变化事件——内部辅助
+
+    参数:
+        run_id: 发生状态变化的 run
+        status: 新状态（running/done/error）
+    返回: 无
+    """
+    event = {"run_id": run_id, "status": status}
+    # 快照后再迭代：广播在 worker 线程、监听者增删在事件循环线程，避免"迭代中集合被改"
+    for listener in list(STATUS_LISTENERS):
+        listener.put(event)
+
 _WEB_DIR = Path(__file__).parent.parent.parent / "web"
 if _WEB_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(_WEB_DIR)), name="static")
@@ -79,6 +97,7 @@ async def run(run_id: str) -> JSONResponse:
         raise HTTPException(409, "run already started or finished")
     q: queue.Queue = queue.Queue()
     PROGRESS_QUEUES[run_id] = q
+    _broadcast_status(run_id, "running")   # 通知 /api/events 监听者：新任务开始，侧栏即时加入「运行中」
     settings = Settings()
     llm = LLMClient(settings=settings)
 
@@ -133,13 +152,17 @@ async def run(run_id: str) -> JSONResponse:
             }
             (run_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
             q.put({"event": "done"})
+            final_status = "done"
         except Exception as exc:  # 把异常透传到前端，不静默吞
             q.put({"event": "error", "message": str(exc)})
+            final_status = "error"
         finally:
             q.put(_DONE)
             # 标记已结束：从 PROGRESS_QUEUES 移除，使 run_status 不再报 running
             # （正在连着的 SSE 已持有 q 引用，仍能读到 _DONE 收尾，不受影响）
             PROGRESS_QUEUES.pop(run_id, None)
+            # 广播终态：先 pop 队列再广播，确保监听者收到事件后重查 /api/runs 看到的是一致的已结束态
+            _broadcast_status(run_id, final_status)
 
     threading.Thread(target=_worker, daemon=True).start()
     return JSONResponse({"status": "started"})
@@ -161,6 +184,33 @@ async def progress(run_id: str) -> StreamingResponse:
             if item is _DONE:
                 break
             yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
+@app.get("/api/events")
+async def events() -> StreamingResponse:
+    """全局运行态事件流（SSE 常驻）——任一 run 状态变化时推 {run_id,status}，供侧栏事件驱动刷新
+
+    替代前端定时轮询 /api/runs：前端开一条常驻连接，只在真有状态变化时收到事件并刷新，
+    无任何空轮询。无事件时每 ~25s 发一条注释行心跳，防代理/浏览器掐断空闲连接。
+    """
+    listener: queue.Queue = queue.Queue()
+    STATUS_LISTENERS.add(listener)
+
+    async def _stream():
+        """从本监听队列取状态事件并以 SSE 格式 yield；断开时注销自己——内部辅助"""
+        loop = asyncio.get_event_loop()
+        try:
+            while True:
+                try:
+                    # 阻塞 get 放线程池，带超时以便周期性发心跳保活
+                    item = await loop.run_in_executor(None, lambda: listener.get(timeout=25))
+                    yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+                except queue.Empty:
+                    yield ": keepalive\n\n"        # SSE 注释行，仅保活、前端忽略
+        finally:
+            STATUS_LISTENERS.discard(listener)     # 连接断开/取消：注销监听者，不泄漏队列
 
     return StreamingResponse(_stream(), media_type="text/event-stream")
 

@@ -29,7 +29,7 @@ function app() {
     authEnabled: false, // 是否开启本地登录门（决定是否显示退出登录）
     sourceModal: null,  // 来源详情弹窗数据 {nodeId, title, groups:[{type,label,items:[{location,quote}]}]}
     _es: null,          // 当前 SSE 连接（切任务/新建前必须关，避免多个连接写同一 phases 致日志串台）
-    _histTimer: null,   // 侧栏历史轮询定时器：状态独立轮询 /api/runs，不依赖 SSE 的 done（后台任务切走后也能自愈成「已完成」）
+    _statusES: null,    // 全局运行态事件流（/api/events 常驻 SSE）：事件驱动刷新侧栏，替代定时轮询
 
     initPhases() {
       this.phases = PHASE_DEFS.map(p => ({ key: p.key, label: p.label, status: "pending", logs: [] }));
@@ -85,27 +85,17 @@ function app() {
         const r = await fetch("/api/runs");
         this.history = await r.json();
       } catch (e) { this.history = []; }
-      this._ensureHistoryPoll();   // 有在跑的任务则保证轮询在转，让侧栏状态独立自愈（不靠 SSE done）
     },
 
-    // 若存在运行中的 run 就启动轮询、否则停掉——内部辅助
-    // 解决：后台任务你切走后，没有 SSE 接它的 done，侧栏会一直卡「运行中」。改由本轮询周期性
-    // 拉 /api/runs（服务端权威 status），任务后台跑完即自动移入「已完成」，无需刷新页面。
-    _ensureHistoryPoll() {
-      const hasRunning = this.history.some(h => h.status === "running");
-      if (hasRunning && !this._histTimer) {
-        this._histTimer = setInterval(async () => {
-          try {
-            const r = await fetch("/api/runs");
-            this.history = await r.json();
-          } catch (e) { /* 网络抖动忽略，下个周期再试 */ }
-          if (!this.history.some(h => h.status === "running")) {
-            clearInterval(this._histTimer); this._histTimer = null;   // 没有在跑的了，停轮询省资源
-          }
-        }, 4000);
-      } else if (!hasRunning && this._histTimer) {
-        clearInterval(this._histTimer); this._histTimer = null;
-      }
+    // 订阅全局运行态事件流（/api/events，常驻 SSE）——事件驱动刷新侧栏，替代定时轮询。
+    // 任一 run 状态变化（running/done/error）时后端广播，这里收到即重新拉一次 /api/runs，
+    // 后台任务跑完也能自动从「运行中」移入「已完成」，无需刷新页面、也无空轮询。
+    _listenStatusEvents() {
+      if (this._statusES) return;            // 已订阅则不重复开
+      const es = new EventSource("/api/events");
+      this._statusES = es;
+      es.onmessage = () => { this.loadHistory(); };   // 收到任意状态事件就刷新侧栏
+      // 连接异常时浏览器会自动重连 EventSource，无需手动处理
     },
 
     // 运行中的 run（左侧栏「运行中」分组）
@@ -337,6 +327,6 @@ function app() {
       }
     },
 
-    init() { this.checkAuth(); this.loadHistory(); },
+    init() { this.checkAuth(); this.loadHistory(); this._listenStatusEvents(); },
   };
 }

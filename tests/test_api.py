@@ -116,6 +116,39 @@ def test_progress_sse_streams_phase_events(monkeypatch, tmp_path):
     assert "classify" in body and "finalize" in body
 
 
+def test_status_events_broadcast_running_then_done(monkeypatch, tmp_path):
+    """运行态广播：跑一个 run，全局监听者应依次收到 running 与 done 事件（事件驱动替代轮询的核心）"""
+    monkeypatch.setattr(api_main, "RUNS_DIR", tmp_path)
+
+    def fake_run(input_path, llm, model_main, model_mini, run_dir, log_callback, project_name=None, cu=None, efforts=None, max_concurrency=5, models=None, model_nano=""):
+        log_callback({"phase": "finalize", "status": "done", "message": "完成"})
+        return _fake_tree()
+
+    monkeypatch.setattr(api_main, "run_pipeline", fake_run)
+
+    # 直接挂一个监听者队列（等价于一条 /api/events 连接），断言广播投递
+    import queue
+    listener: queue.Queue = queue.Queue()
+    api_main.STATUS_LISTENERS.add(listener)
+    try:
+        client = TestClient(api_main.app)
+        files = [("files", ("a.docx", io.BytesIO(b"x"), "application/octet-stream"))]
+        run_id = client.post("/api/upload", files=files).json()["run_id"]
+        client.post(f"/api/run/{run_id}")
+        # 消费 progress SSE 确保 worker 跑完（done/error 广播在 finally）
+        with client.stream("GET", f"/api/progress/{run_id}") as resp:
+            "".join(resp.iter_text())
+
+        events = []
+        while not listener.empty():
+            events.append(listener.get_nowait())
+        statuses = [(e["run_id"], e["status"]) for e in events]
+        assert (run_id, "running") in statuses     # 开始时广播 running
+        assert (run_id, "done") in statuses        # 完成时广播 done
+    finally:
+        api_main.STATUS_LISTENERS.discard(listener)
+
+
 def test_export_docx(monkeypatch, tmp_path):
     """导出 docx 返回二进制"""
     monkeypatch.setattr(api_main, "RUNS_DIR", tmp_path)
