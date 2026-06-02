@@ -11,108 +11,144 @@
   </style>
 </head>
 <body class="bg-neutral-50 text-neutral-800 antialiased">
-  <div x-data="app()" class="max-w-3xl mx-auto px-6 py-16">
-    <header class="mb-12">
-      <h1 class="text-3xl font-semibold tracking-tight text-neutral-900">投标大纲提取</h1>
-      <p class="mt-2 text-neutral-500">上传招标文件，自动生成结构化投标文件大纲。</p>
-    </header>
-
-    <div class="mb-8">
-      <label class="block border border-dashed border-neutral-300 rounded-2xl bg-white px-8 py-10 text-center cursor-pointer hover:border-neutral-400 transition-colors">
-        <input type="file" multiple class="hidden" @change="onFile($event)" />
-        <div class="text-neutral-700 font-medium">选择文件或拖拽到此处</div>
-        <div class="text-sm text-neutral-400 mt-1">支持 docx / doc / pdf，可多选（文件包）</div>
-        <template x-if="fileNames.length">
-          <div class="mt-4 text-sm text-neutral-600 space-y-1">
-            <template x-for="n in fileNames" :key="n"><div x-text="n"></div></template>
-          </div>
-        </template>
-      </label>
-      <button @click="run()" :disabled="!runId || running"
-              class="mt-5 w-full sm:w-auto px-6 py-2.5 rounded-full bg-neutral-900 text-white text-sm font-medium disabled:opacity-30 hover:bg-neutral-700 transition-colors">
-        <span x-text="running ? '处理中…' : '开始提取'"></span>
+  <div x-data="app()" class="flex min-h-screen">
+    <!-- 左侧历史边栏 -->
+    <aside class="w-64 shrink-0 border-r border-neutral-200 bg-white px-3 py-5 hidden md:block">
+      <button @click="newRun()"
+              class="w-full mb-4 px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors">
+        + 新建提取
       </button>
-    </div>
-
-    <div class="mb-8 rounded-2xl bg-red-50 text-red-600 px-5 py-4 text-sm" x-show="errorMsg" x-text="errorMsg"></div>
-
-    <section class="mb-8 rounded-2xl bg-white border border-neutral-100 p-6" x-show="phases.length">
-      <h2 class="text-sm font-semibold text-neutral-400 uppercase tracking-wide mb-5">处理流程</h2>
-      <ol class="space-y-1">
-        <template x-for="(p, i) in phases" :key="p.key">
-          <li>
-            <div class="flex items-center px-2 py-2 rounded-xl transition-colors"
-                 :class="p.status === 'running' ? 'bg-neutral-50' : ''">
-              <span class="w-5 h-5 mr-3 flex items-center justify-center shrink-0">
-                <template x-if="p.status === 'done'">
-                  <span class="w-4 h-4 rounded-full bg-neutral-900 text-white text-[10px] flex items-center justify-center">✓</span>
-                </template>
-                <template x-if="p.status === 'running'">
-                  <span class="w-4 h-4 rounded-full border-2 border-neutral-900 border-t-transparent animate-spin"></span>
-                </template>
-                <template x-if="p.status === 'pending'">
-                  <span class="w-1.5 h-1.5 rounded-full bg-neutral-300"></span>
-                </template>
-              </span>
-              <span class="text-sm"
-                    :class="p.status === 'running' ? 'font-semibold text-neutral-900' : (p.status === 'done' ? 'text-neutral-600' : 'text-neutral-300')"
-                    x-text="(i + 1) + '. ' + p.label"></span>
+      <div class="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-2 px-1">历史记录</div>
+      <div class="space-y-1">
+        <template x-for="h in history" :key="h.run_id">
+          <button @click="openHistory(h.run_id)"
+                  class="w-full text-left px-3 py-2 rounded-lg hover:bg-neutral-50 transition-colors"
+                  :class="viewing === h.run_id ? 'bg-indigo-50 ring-1 ring-indigo-200' : ''">
+            <div class="text-sm text-neutral-800 truncate" x-text="h.project_name"></div>
+            <div class="text-xs text-neutral-400 mt-0.5">
+              <span x-text="(h.coverage ? (h.coverage.mapped_scoring_items+h.coverage.mapped_tech_items+h.coverage.mapped_biz_items) : 0) + ' 项要求'"></span>
             </div>
-            <template x-for="line in p.logs" :key="line">
-              <div class="ml-10 text-xs text-neutral-400 py-0.5" x-text="line"></div>
-            </template>
-          </li>
+          </button>
         </template>
-      </ol>
-    </section>
-
-    <section class="mb-8 rounded-2xl bg-white border border-neutral-100 p-6" x-show="tree">
-      <h2 class="text-sm font-semibold text-neutral-400 uppercase tracking-wide mb-4">覆盖率</h2>
-      <template x-if="tree">
-        <div class="flex flex-wrap gap-8 text-sm">
-          <div>
-            <div class="text-neutral-400 text-xs mb-1">评分点</div>
-            <div :class="cov.mapped_scoring_items===cov.total_scoring_items ? 'text-neutral-900' : 'text-amber-600'"
-                 class="text-lg font-medium" x-text="cov.mapped_scoring_items + ' / ' + cov.total_scoring_items"></div>
-          </div>
-          <div>
-            <div class="text-neutral-400 text-xs mb-1">技术条目</div>
-            <div :class="cov.mapped_tech_items===cov.total_tech_items ? 'text-neutral-900' : 'text-amber-600'"
-                 class="text-lg font-medium" x-text="cov.mapped_tech_items + ' / ' + cov.total_tech_items"></div>
-          </div>
-          <div>
-            <div class="text-neutral-400 text-xs mb-1">商务</div>
-            <div :class="cov.mapped_biz_items===cov.total_biz_items ? 'text-neutral-900' : 'text-amber-600'"
-                 class="text-lg font-medium" x-text="cov.mapped_biz_items + ' / ' + cov.total_biz_items"></div>
-          </div>
-        </div>
-      </template>
-      <template x-if="tree && cov.unmapped && cov.unmapped.length">
-        <div class="mt-4 text-sm">
-          <div class="text-amber-600 font-medium mb-1">未覆盖（建议人工复核）</div>
-          <ul class="list-disc ml-5 text-neutral-500 space-y-0.5">
-            <template x-for="u in cov.unmapped" :key="u"><li x-text="u"></li></template>
-          </ul>
-        </div>
-      </template>
-    </section>
-
-    <section class="rounded-2xl bg-white border border-neutral-100 p-6" x-show="tree">
-      <div class="flex justify-between items-center mb-5">
-        <h2 class="text-sm font-semibold text-neutral-400 uppercase tracking-wide">投标文件大纲</h2>
-        <div class="flex items-center gap-4">
-          <label class="text-xs text-neutral-500 flex items-center gap-1.5">
-            <input type="checkbox" x-model="keepAiMarks" class="rounded" /> 保留 AI 建议标注
-          </label>
-          <a :href="exportUrl()" class="px-4 py-1.5 rounded-full border border-neutral-300 text-neutral-700 text-xs font-medium hover:bg-neutral-50 transition-colors">导出 Word</a>
-        </div>
+        <div class="text-xs text-neutral-300 px-3 py-2" x-show="!history.length">暂无记录</div>
       </div>
-      <div class="text-sm leading-relaxed">
-        <template x-for="n in (tree ? tree.nodes : [])" :key="n.id">
-          <div x-html="renderNode(n, 0)"></div>
+    </aside>
+
+    <!-- 右侧主区 -->
+    <main class="flex-1 max-w-3xl mx-auto px-6 py-12 w-full">
+      <header class="mb-10">
+        <h1 class="text-3xl font-semibold tracking-tight text-neutral-900">投标大纲提取</h1>
+        <p class="mt-2 text-neutral-500">上传招标文件，自动生成结构化投标文件大纲。</p>
+      </header>
+
+      <!-- 上传区（回看模式隐藏） -->
+      <div class="mb-8" x-show="!viewing">
+        <label class="block border border-dashed border-neutral-300 rounded-2xl bg-white px-8 py-10 text-center cursor-pointer hover:border-indigo-400 transition-colors">
+          <input type="file" multiple class="hidden" @change="onFile($event)" />
+          <div class="text-neutral-700 font-medium">选择文件或拖拽到此处</div>
+          <div class="text-sm text-neutral-400 mt-1">支持 docx / doc / pdf，可多选（文件包）</div>
+          <template x-if="fileNames.length">
+            <div class="mt-4 text-sm text-neutral-600 space-y-1">
+              <template x-for="n in fileNames" :key="n"><div x-text="n"></div></template>
+            </div>
+          </template>
+        </label>
+        <button @click="run()" :disabled="!runId || running"
+                class="mt-5 px-6 py-2.5 rounded-full bg-indigo-600 text-white text-sm font-medium disabled:opacity-30 hover:bg-indigo-700 transition-colors">
+          <span x-text="running ? '处理中…' : '开始提取'"></span>
+        </button>
+      </div>
+
+      <div class="mb-8 rounded-2xl bg-red-50 text-red-600 px-5 py-4 text-sm" x-show="errorMsg" x-text="errorMsg"></div>
+
+      <!-- 处理流程 + 阶段日志窗 -->
+      <section class="mb-8 rounded-2xl bg-white border border-neutral-100 p-6" x-show="phases.length">
+        <h2 class="text-sm font-semibold text-neutral-400 uppercase tracking-wide mb-5">处理流程</h2>
+        <ol class="space-y-1">
+          <template x-for="(p, i) in phases" :key="p.key">
+            <li>
+              <div class="flex items-center px-2 py-2 rounded-xl transition-colors cursor-pointer"
+                   :class="p.status === 'running' ? 'bg-indigo-50' : ''" @click="toggle(p)">
+                <span class="w-5 h-5 mr-3 flex items-center justify-center shrink-0">
+                  <template x-if="p.status === 'done'">
+                    <span class="w-4 h-4 rounded-full bg-indigo-600 text-white text-[10px] flex items-center justify-center">✓</span>
+                  </template>
+                  <template x-if="p.status === 'running'">
+                    <span class="w-4 h-4 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin"></span>
+                  </template>
+                  <template x-if="p.status === 'pending'">
+                    <span class="w-1.5 h-1.5 rounded-full bg-neutral-300"></span>
+                  </template>
+                </span>
+                <span class="text-sm flex-1"
+                      :class="p.status === 'running' ? 'font-semibold text-indigo-700' : (p.status === 'done' ? 'text-neutral-700' : 'text-neutral-300')"
+                      x-text="(i + 1) + '. ' + p.label"></span>
+                <span class="text-xs text-neutral-300" x-show="p.logs.length" x-text="isExpanded(p) ? '收起' : '展开'"></span>
+              </div>
+              <!-- 滚动日志窗 -->
+              <div x-show="isExpanded(p) && p.logs.length"
+                   class="ml-10 mt-1 mb-2 max-h-44 overflow-y-auto rounded-lg bg-neutral-900 text-neutral-100 text-xs font-mono p-3 space-y-1">
+                <template x-for="(line, li) in p.logs" :key="li">
+                  <div :class="line.level === 'main' ? 'text-emerald-300' : 'text-neutral-400'">
+                    <span x-text="line.level === 'main' ? '▸ ' : '· '"></span><span x-text="line.text"></span>
+                  </div>
+                </template>
+              </div>
+            </li>
+          </template>
+        </ol>
+      </section>
+
+      <!-- 覆盖率 -->
+      <section class="mb-8 rounded-2xl bg-white border border-neutral-100 p-6" x-show="tree">
+        <h2 class="text-sm font-semibold text-neutral-400 uppercase tracking-wide mb-4">覆盖率</h2>
+        <template x-if="tree">
+          <div class="flex flex-wrap gap-8 text-sm">
+            <div>
+              <div class="text-neutral-400 text-xs mb-1">评分点</div>
+              <div :class="cov.mapped_scoring_items===cov.total_scoring_items ? 'text-emerald-600' : 'text-amber-600'"
+                   class="text-lg font-medium" x-text="cov.mapped_scoring_items + ' / ' + cov.total_scoring_items"></div>
+            </div>
+            <div>
+              <div class="text-neutral-400 text-xs mb-1">技术条目</div>
+              <div :class="cov.mapped_tech_items===cov.total_tech_items ? 'text-emerald-600' : 'text-amber-600'"
+                   class="text-lg font-medium" x-text="cov.mapped_tech_items + ' / ' + cov.total_tech_items"></div>
+            </div>
+            <div>
+              <div class="text-neutral-400 text-xs mb-1">商务</div>
+              <div :class="cov.mapped_biz_items===cov.total_biz_items ? 'text-emerald-600' : 'text-amber-600'"
+                   class="text-lg font-medium" x-text="cov.mapped_biz_items + ' / ' + cov.total_biz_items"></div>
+            </div>
+          </div>
         </template>
-      </div>
-    </section>
+        <template x-if="tree && cov.unmapped && cov.unmapped.length">
+          <div class="mt-4 text-sm">
+            <div class="text-amber-600 font-medium mb-1">未覆盖（建议人工复核）</div>
+            <ul class="list-disc ml-5 text-neutral-500 space-y-0.5">
+              <template x-for="u in cov.unmapped" :key="u"><li x-text="u"></li></template>
+            </ul>
+          </div>
+        </template>
+      </section>
+
+      <!-- 大纲树 -->
+      <section class="rounded-2xl bg-white border border-neutral-100 p-6" x-show="tree">
+        <div class="flex justify-between items-center mb-5">
+          <h2 class="text-sm font-semibold text-neutral-400 uppercase tracking-wide">投标文件大纲</h2>
+          <div class="flex items-center gap-4">
+            <label class="text-xs text-neutral-500 flex items-center gap-1.5">
+              <input type="checkbox" x-model="keepAiMarks" class="rounded" /> 保留 AI 建议标注
+            </label>
+            <a :href="exportUrl()" class="px-4 py-1.5 rounded-full bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition-colors">导出 Word</a>
+          </div>
+        </div>
+        <div class="text-sm leading-relaxed">
+          <template x-for="n in (tree ? tree.nodes : [])" :key="n.id">
+            <div x-html="renderNode(n, 0)"></div>
+          </template>
+        </div>
+      </section>
+    </main>
   </div>
   <script src="/static/app.js"></script>
 </body>

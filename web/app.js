@@ -18,56 +18,75 @@ function app() {
     runId: null,
     fileNames: [],
     running: false,
-    phases: [],        // [{key,label,status:'pending'|'running'|'done',logs:[]}]
+    phases: [],
     errorMsg: "",
     tree: null,
     keepAiMarks: false,
+    history: [],        // 历史 run 列表
+    viewing: null,      // 正在回看的 run_id（null=新建/实时模式）
+    expanded: {},       // {phaseKey: bool} 手动展开状态
 
-    // 初始化阶段时间线为全 pending——辅助
     initPhases() {
       this.phases = PHASE_DEFS.map(p => ({ key: p.key, label: p.label, status: "pending", logs: [] }));
+      this.expanded = {};
     },
 
-    // 来源类型 → 徽章
     badge(type) {
       const m = { skeleton: "📋骨架", scoring: "📊评分", tech_spec: "📐技术",
                   biz_terms: "📄商务", ai_suggested: "🤖AI建议" };
       return m[type] || type;
     },
 
-    // 选择文件后立即上传（支持多文件）
+    // 来源类型 → 徽章配色类（功能色，低饱和）
+    badgeClass(type) {
+      const m = {
+        skeleton: "bg-blue-50 text-blue-600",
+        scoring: "bg-green-50 text-green-600",
+        tech_spec: "bg-purple-50 text-purple-600",
+        biz_terms: "bg-orange-50 text-orange-600",
+        ai_suggested: "bg-neutral-100 text-neutral-500",
+      };
+      return m[type] || "bg-neutral-100 text-neutral-500";
+    },
+
+    async loadHistory() {
+      try {
+        const r = await fetch("/api/runs");
+        this.history = await r.json();
+      } catch (e) { this.history = []; }
+    },
+
     async onFile(e) {
       const files = Array.from(e.target.files || []);
       if (!files.length) return;
       this.fileNames = files.map(f => f.name);
       const fd = new FormData();
-      files.forEach(f => fd.append("files", f));   // 字段名 files，与后端一致
+      files.forEach(f => fd.append("files", f));
       const r = await fetch("/api/upload", { method: "POST", body: fd });
-      const data = await r.json();
-      this.runId = data.run_id;
+      this.runId = (await r.json()).run_id;
     },
 
-    // 运行管线：启动后台执行，并用 SSE 实时接收阶段日志
+    newRun() {
+      this.viewing = null; this.runId = null; this.fileNames = [];
+      this.tree = null; this.errorMsg = ""; this.phases = []; this.running = false;
+    },
+
     async run() {
       if (!this.runId) return;
-      this.running = true;
-      this.errorMsg = "";
-      this.tree = null;
+      this.viewing = null;
+      this.running = true; this.errorMsg = ""; this.tree = null;
       this.initPhases();
       await fetch(`/api/run/${this.runId}`, { method: "POST" });
-
       const es = new EventSource(`/api/progress/${this.runId}`);
       es.onmessage = async (e) => {
         const ev = JSON.parse(e.data);
         if (ev.event === "done") {
           es.close();
-          const tr = await fetch(`/api/tree/${this.runId}`);
-          this.tree = await tr.json();
+          this.tree = await (await fetch(`/api/tree/${this.runId}`)).json();
           this.running = false;
+          this.loadHistory();
         } else if (ev.event === "error") {
-          es.close();
-          this.errorMsg = ev.message || "运行出错";
-          this.running = false;
+          es.close(); this.errorMsg = ev.message || "运行出错"; this.running = false;
         } else {
           this.applyPhaseEvent(ev);
         }
@@ -75,7 +94,6 @@ function app() {
       es.onerror = () => { es.close(); this.running = false; };
     },
 
-    // 应用一条阶段日志事件到时间线——辅助
     applyPhaseEvent(ev) {
       const p = this.phases.find(x => x.key === ev.phase);
       if (!p) return;
@@ -83,23 +101,38 @@ function app() {
         p.status = "running";
       } else if (ev.status === "done") {
         p.status = "done";
-        if (ev.message) p.logs.push(ev.message);
+        if (ev.message) p.logs.push({ level: "main", text: ev.message });
+      } else if (ev.status === "progress") {
+        p.status = "running";
+        if (ev.message) p.logs.push({ level: ev.level || "detail", text: ev.message });
       }
     },
 
-    get cov() { return this.tree ? this.tree.coverage : {}; },
+    // 阶段日志窗是否展开：运行中自动开，完成后看手动状态
+    isExpanded(p) {
+      if (p.status === "running") return true;
+      return !!this.expanded[p.key];
+    },
+    toggle(p) { this.expanded[p.key] = !this.expanded[p.key]; },
 
-    // 导出 URL（带 AI 标注开关）
-    exportUrl() {
-      return `/api/export/${this.runId}.docx?keep_ai_marks=${this.keepAiMarks}`;
+    // 点击历史项：回看模式，加载日志+树
+    async openHistory(runId) {
+      this.viewing = runId; this.running = false; this.errorMsg = "";
+      this.initPhases();
+      const events = await (await fetch(`/api/runs/${runId}/logs`)).json();
+      events.forEach(ev => this.applyPhaseEvent(ev));
+      this.phases.forEach(p => { if (p.logs.length) p.status = "done"; });
+      this.tree = await (await fetch(`/api/tree/${runId}`)).json();
     },
 
-    // 递归渲染节点为 HTML（Apple 风：低饱和、克制）
+    get cov() { return this.tree ? this.tree.coverage : {}; },
+    exportUrl() { return `/api/export/${this.viewing || this.runId}.docx?keep_ai_marks=${this.keepAiMarks}`; },
+
     renderNode(node, depth) {
       const pad = depth * 18;
       const types = [...new Set((node.sources || []).map(s => s.type))];
       const badges = types
-        .map(t => `<span class="ml-2 px-1.5 py-0.5 rounded text-[11px] bg-neutral-100 text-neutral-500">${this.badge(t)}</span>`)
+        .map(t => `<span class="ml-2 px-1.5 py-0.5 rounded text-[11px] ${this.badgeClass(t)}">${this.badge(t)}</span>`)
         .join("");
       const isAi = types.length === 1 && types[0] === "ai_suggested";
       const bg = isAi ? "background:#fafafa;" : "";
@@ -109,5 +142,7 @@ function app() {
       for (const c of (node.children || [])) html += this.renderNode(c, depth + 1);
       return html;
     },
+
+    init() { this.loadHistory(); },
   };
 }
