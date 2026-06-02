@@ -134,6 +134,19 @@ function app() {
       this.tree = null; this.errorMsg = ""; this.phases = []; this.running = false;
     },
 
+    // 删除一条已完成记录：二次确认后调后端 DELETE（清磁盘+内存），刷新侧栏
+    async deleteRun(runId, name) {
+      if (!confirm(`确定删除「${name || runId}」？此操作不可恢复。`)) return;
+      try {
+        const resp = await fetch(`/api/runs/${runId}`, { method: "DELETE" });
+        if (!resp.ok) { this.errorMsg = "删除失败"; return; }
+        if (this.viewing === runId) this.newRun();   // 删的正是当前回看的 → 清空主区
+        await this.loadHistory();                    // 刷新侧栏，已删项消失
+      } catch (e) {
+        this.errorMsg = "删除失败";
+      }
+    },
+
     async run() {
       if (!this.runId || this.running) return;   // 防重入：已在跑直接 return
       this.viewing = null;

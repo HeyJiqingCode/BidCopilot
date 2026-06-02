@@ -254,6 +254,32 @@ def export(run_id: str, keep_ai_marks: bool = False) -> FileResponse:
                         filename="投标文件大纲.docx")
 
 
+@app.delete("/api/runs/{run_id}")
+def delete_run(run_id: str) -> JSONResponse:
+    """删除一个已完成的 run——清磁盘 runs/{id} 文件夹 + 内存 TREE_STORE/UPLOAD_STORE
+
+    只删已完成的：运行中的后台线程仍在写 runs/，删了会让线程出错，故拒删（409）。
+    run_id 非法（含路径分隔/上跳）拒绝（400，防路径穿越）；既无目录也无内存态则 404。
+
+    参数:
+        run_id: 待删除的 run 标识
+    返回:
+        删除结果 JSON
+    """
+    if "/" in run_id or "\\" in run_id or ".." in run_id:
+        raise HTTPException(400, "invalid run_id")
+    if run_id in PROGRESS_QUEUES:                     # 运行中不给删
+        raise HTTPException(409, "run is still running")
+    run_dir = RUNS_DIR / run_id
+    if not run_dir.exists() and run_id not in TREE_STORE and run_id not in UPLOAD_STORE:
+        raise HTTPException(404, "run not found")
+    if run_dir.exists():
+        shutil.rmtree(run_dir, ignore_errors=True)    # 清磁盘
+    TREE_STORE.pop(run_id, None)                      # 清内存结果树
+    UPLOAD_STORE.pop(run_id, None)                    # 清内存上传路径
+    return JSONResponse({"status": "deleted", "run_id": run_id})
+
+
 @app.get("/api/runs")
 def list_runs() -> JSONResponse:
     """列出所有 run（已完成的读 meta.json 带 status=done；正在跑的从 PROGRESS_QUEUES 补 status=running）——按时间倒序"""

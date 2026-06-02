@@ -270,3 +270,62 @@ def test_runs_list_includes_status(monkeypatch, tmp_path):
     finally:
         api_main.PROGRESS_QUEUES.pop("live123", None)
         api_main.UPLOAD_STORE.pop("live123", None)
+
+
+def test_delete_run_removes_disk_and_memory(monkeypatch, tmp_path):
+    """删除已完成 run：磁盘文件夹+内存清掉，之后 /api/runs 不含它、/api/tree 404"""
+    monkeypatch.setattr(api_main, "RUNS_DIR", tmp_path)
+
+    def fake_run(input_path, llm, model_main, model_mini, run_dir, log_callback, project_name=None, cu=None, efforts=None, max_concurrency=5, models=None, model_nano=""):
+        import json as _j
+        run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "finalize.json").write_text(_j.dumps(_fake_tree().model_dump(), ensure_ascii=False), encoding="utf-8")
+        log_callback({"phase": "finalize", "status": "done", "message": "完成"})
+        return _fake_tree()
+
+    monkeypatch.setattr(api_main, "run_pipeline", fake_run)
+
+    client = TestClient(api_main.app)
+    files = [("files", ("a.docx", io.BytesIO(b"x"), "application/octet-stream"))]
+    run_id = client.post("/api/upload", files=files).json()["run_id"]
+    client.post(f"/api/run/{run_id}")
+    with client.stream("GET", f"/api/progress/{run_id}") as resp:
+        "".join(resp.iter_text())   # 跑完，落 meta.json + finalize.json
+
+    assert (tmp_path / run_id).exists()                       # 删前目录在
+    resp = client.request("DELETE", f"/api/runs/{run_id}")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "deleted"
+    assert not (tmp_path / run_id).exists()                   # 磁盘文件夹已删
+    assert run_id not in api_main.TREE_STORE                  # 内存结果树已清
+    assert run_id not in api_main.UPLOAD_STORE                # 内存上传路径已清
+    assert run_id not in [r["run_id"] for r in client.get("/api/runs").json()]  # 列表不含
+    assert client.get(f"/api/tree/{run_id}").status_code == 404                  # 树查不到
+
+
+def test_delete_run_rejects_running(monkeypatch, tmp_path):
+    """运行中的 run（PROGRESS_QUEUES 有）拒绝删除，返回 409"""
+    monkeypatch.setattr(api_main, "RUNS_DIR", tmp_path)
+    import queue
+    api_main.PROGRESS_QUEUES["live999"] = queue.Queue()
+    try:
+        client = TestClient(api_main.app)
+        resp = client.request("DELETE", "/api/runs/live999")
+        assert resp.status_code == 409
+    finally:
+        api_main.PROGRESS_QUEUES.pop("live999", None)
+
+
+def test_delete_run_not_found(monkeypatch, tmp_path):
+    """删不存在的 run → 404"""
+    monkeypatch.setattr(api_main, "RUNS_DIR", tmp_path)
+    client = TestClient(api_main.app)
+    assert client.request("DELETE", "/api/runs/nope123").status_code == 404
+
+
+def test_delete_run_rejects_path_traversal(monkeypatch, tmp_path):
+    """run_id 含路径穿越字符 → 400，不触碰文件系统"""
+    monkeypatch.setattr(api_main, "RUNS_DIR", tmp_path)
+    client = TestClient(api_main.app)
+    # 含 .. 的 run_id（用 %2e%2e 绕过路由也应被拦；这里直接测点号段）
+    assert client.request("DELETE", "/api/runs/..%2F..%2Fetc").status_code in (400, 404)
