@@ -15,8 +15,12 @@ from bid_copilot.llm.client import LLMClient
 from bid_copilot.understanding.pipeline import run_pipeline
 from bid_copilot.models import OutlineTree
 from bid_copilot.understanding.output.word_export import export_to_docx
+from bid_copilot.auth.middleware import register_local_auth_middleware
+from bid_copilot.auth.routes import router as auth_router
 
-app = FastAPI(title="招标大纲提取 Demo")
+app = FastAPI(title="智能投标助手 Demo")
+register_local_auth_middleware(app)  # 本地登录门（ENABLE_LOCAL_AUTH=false 时完全放行）
+app.include_router(auth_router)
 
 # 运行态存储（Demo 用内存，足够）
 RUNS_DIR = Path("runs")
@@ -33,6 +37,12 @@ if _WEB_DIR.exists():
 async def index() -> HTMLResponse:
     """返回前端页面"""
     return HTMLResponse((_WEB_DIR / "index.html").read_text(encoding="utf-8"))
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page() -> HTMLResponse:
+    """返回登录页（仅在开启本地认证时有意义；公开路径，不经认证守卫）"""
+    return HTMLResponse((_WEB_DIR / "login.html").read_text(encoding="utf-8"))
 
 
 @app.post("/api/upload")

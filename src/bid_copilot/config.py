@@ -21,3 +21,13 @@ class Settings:
     cu_endpoint: str = field(default_factory=lambda: os.getenv("CU_ENDPOINT", ""))
     # Content Understanding 密钥（可选，缺省为空字符串）
     cu_key: str = field(default_factory=lambda: os.getenv("CU_KEY", ""))
+    # 是否启用本地登录门（Demo 部署用；false 则完全放行，默认行为不变）
+    enable_local_auth: bool = field(default_factory=lambda: os.getenv("ENABLE_LOCAL_AUTH", "false").lower() == "true")
+    # 本地登录用户名
+    local_auth_username: str = field(default_factory=lambda: os.getenv("LOCAL_AUTH_USERNAME", "admin"))
+    # 本地登录密码
+    local_auth_password: str = field(default_factory=lambda: os.getenv("LOCAL_AUTH_PASSWORD", "admin123"))
+    # 会话有效小时数
+    local_auth_session_hours: int = field(default_factory=lambda: int(os.getenv("LOCAL_AUTH_SESSION_HOURS", "24")))
+    # 会话 cookie 名
+    local_auth_cookie_name: str = field(default_factory=lambda: os.getenv("LOCAL_AUTH_COOKIE_NAME", "bid_copilot_session"))
