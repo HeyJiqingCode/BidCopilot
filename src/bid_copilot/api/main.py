@@ -108,6 +108,7 @@ async def run(run_id: str) -> JSONResponse:
                     "merge": settings.effort_merge,
                     "supplement": settings.effort_supplement,
                 },
+                max_concurrency=settings.max_concurrency,
             )
             TREE_STORE[run_id] = tree
             meta = {

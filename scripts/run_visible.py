@@ -34,6 +34,7 @@ def main():
             "merge": settings.effort_merge,
             "supplement": settings.effort_supplement,
         },
+        max_concurrency=settings.max_concurrency,
     )
     print("\n===== 大纲树 =====")
     _print_tree(tree.nodes)

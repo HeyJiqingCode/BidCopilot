@@ -2,15 +2,34 @@
 from bid_copilot.models import (
     OutlineNode, SourceRef, SourceType, RequirementItem,
 )
-from bid_copilot.understanding.alignment.merge import merge_requirements, MergeResult, Disposition, MergeDecision, compute_coverage
+from bid_copilot.understanding.alignment.merge import (
+    merge_requirements, MergeResult, Disposition, MergeDecision, compute_coverage,
+    _NormalizeResult, _AttachResult, _NewChild, _DedupeResult, _collect_ref_ids,
+)
 
 
 class _FakeLLM:
-    def __init__(self, result):
-        self._result = result
+    """按调用 schema 路由返回值的 scripted LLM——模拟两阶段 merge 的三类调用"""
+    def __init__(self, normalize=None, attach_by_type=None, dedupe=None):
+        # normalize: _NormalizeResult；attach_by_type: {SourceType: _AttachResult}；dedupe: _DedupeResult
+        self._normalize = normalize
+        self._attach_by_type = attach_by_type or {}
+        self._dedupe = dedupe or _DedupeResult()
+        self._attach_calls = 0
 
     def complete(self, **kwargs):
-        return self._result
+        schema = kwargs.get("schema")
+        if schema is _NormalizeResult:
+            return self._normalize
+        if schema is _AttachResult:
+            # 阶段B 按批调用——依调用顺序（scoring, tech_spec, biz_terms）返回
+            order = [SourceType.SCORING, SourceType.TECH_SPEC, SourceType.BIZ_TERMS]
+            t = order[self._attach_calls] if self._attach_calls < len(order) else None
+            self._attach_calls += 1
+            return self._attach_by_type.get(t, _AttachResult())
+        if schema is _DedupeResult:
+            return self._dedupe
+        raise AssertionError(f"未预期的 schema: {schema}")
 
 
 def _node(node_id, title, ref_ids, src_type=SourceType.SCORING, children=None):
@@ -32,8 +51,8 @@ def _node(node_id, title, ref_ids, src_type=SourceType.SCORING, children=None):
     )
 
 
-def test_merge_returns_tree_and_decisions():
-    """归并返回树 + 每条要求的判定"""
+def test_merge_two_stage_backfills_refids_and_floating_excluded():
+    """两阶段归并：merged_into 把 ref_id 回填进树、floating 不进树、decisions 数=要求数"""
     skeleton = [OutlineNode(id="1", title="资格审查资料", level=1, sources=[
         SourceRef(type=SourceType.SKELETON, document="fmt", location="五", quote=None)], children=[])]
     reqs = [
@@ -42,15 +61,58 @@ def test_merge_returns_tree_and_decisions():
         RequirementItem(ref_id="R1", description="效率98.5%", source_type=SourceType.TECH_SPEC,
                         location="技术3.1", suggested_title="效率响应"),
     ]
-    fake = _FakeLLM(MergeResult(
-        tree=skeleton,
-        decisions=[
-            MergeDecision(ref_id="R0", disposition=Disposition.MERGED_INTO, node_id="1"),
-            MergeDecision(ref_id="R1", disposition=Disposition.FLOATING, node_id=None),
-        ],
-    ))
+    # 阶段A 规范化原样返回骨架（finalize_ids 会把 id 重整为 "1"）
+    normalize = _NormalizeResult(tree=[OutlineNode(id="1", title="资格审查资料", level=1, sources=[
+        SourceRef(type=SourceType.SKELETON, document="fmt", location="五", quote=None)], children=[])])
+    # 阶段B：评分批把 R0 挂到节点 "1"；技术批把 R1 标 floating
+    attach = {
+        SourceType.SCORING: _AttachResult(decisions=[
+            MergeDecision(ref_id="R0", disposition=Disposition.MERGED_INTO, node_id="1")]),
+        SourceType.TECH_SPEC: _AttachResult(decisions=[
+            MergeDecision(ref_id="R1", disposition=Disposition.FLOATING, node_id=None)]),
+    }
+    fake = _FakeLLM(normalize=normalize, attach_by_type=attach)
     tree, decisions = merge_requirements(skeleton, reqs, llm=fake, model="gpt-5.4")
-    assert len(decisions) == 2
+
+    assert len(decisions) == 2                       # 两条要求都有判定
+    mapped = _collect_ref_ids(tree)
+    assert "R0" in mapped                            # merged_into → ref_id 回填进树
+    assert "R1" not in mapped                        # floating → 不进树
+
+
+def test_merge_two_stage_child_of_creates_node_and_dedupes():
+    """两阶段：child_of 新建子节点；跨批同义新子节点被阶段C 去重合并"""
+    skeleton = [OutlineNode(id="1", title="技术投标文件", level=1, sources=[
+        SourceRef(type=SourceType.SKELETON, document="fmt", location="技术", quote=None)], children=[])]
+    reqs = [
+        RequirementItem(ref_id="R0", description="项目管理机构", source_type=SourceType.SCORING,
+                        location="评分1", suggested_title="项目管理机构"),
+        RequirementItem(ref_id="R1", description="项目组织机构", source_type=SourceType.TECH_SPEC,
+                        location="技术1", suggested_title="项目组织机构"),
+    ]
+    normalize = _NormalizeResult(tree=[OutlineNode(id="1", title="技术投标文件", level=1, sources=[
+        SourceRef(type=SourceType.SKELETON, document="fmt", location="技术", quote=None)], children=[])])
+    # 评分批与技术批各自在节点 "1" 下新增一个语义相近的子节点
+    attach = {
+        SourceType.SCORING: _AttachResult(
+            decisions=[MergeDecision(ref_id="R0", disposition=Disposition.CHILD_OF, node_id="1")],
+            new_children=[_NewChild(parent_id="1", title="项目管理机构", source_type=SourceType.SCORING, ref_id="R0")]),
+        SourceType.TECH_SPEC: _AttachResult(
+            decisions=[MergeDecision(ref_id="R1", disposition=Disposition.CHILD_OF, node_id="1")],
+            new_children=[_NewChild(parent_id="1", title="项目组织机构", source_type=SourceType.TECH_SPEC, ref_id="R1")]),
+    }
+    # 阶段C：把两个新子节点合并为一个（keep 第一个，并入第二个）
+    from bid_copilot.understanding.alignment.merge import _DedupeGroup
+    dedupe = _DedupeResult(groups=[_DedupeGroup(keep_id="_new1", merge_ids=["_new2"], title="项目管理机构")])
+    fake = _FakeLLM(normalize=normalize, attach_by_type=attach, dedupe=dedupe)
+
+    tree, decisions = merge_requirements(skeleton, reqs, llm=fake, model="gpt-5.4")
+
+    mapped = _collect_ref_ids(tree)
+    assert "R0" in mapped and "R1" in mapped         # 两条都挂进了树
+    # 去重后，节点 "技术投标文件" 下只应有 1 个子节点（两个同义新节点合一）
+    tech = next(n for n in tree if n.title == "技术投标文件")
+    assert len(tech.children) == 1
 
 
 def test_compute_coverage_counts_mapped_vs_total():

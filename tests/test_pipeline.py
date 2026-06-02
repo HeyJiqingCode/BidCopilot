@@ -8,13 +8,30 @@ from bid_copilot.understanding.classify import FileClass, ClassifyResult
 from bid_copilot.understanding.locate import LocateResult
 from bid_copilot.understanding.extract_skeleton import SkeletonResult
 from bid_copilot.understanding.extract_requirements import RequirementsResult
-from bid_copilot.understanding.alignment.merge import MergeResult, MergeDecision, Disposition
+from bid_copilot.understanding.alignment.merge import (
+    MergeResult, MergeDecision, Disposition, _NormalizeResult, _AttachResult, _DedupeResult,
+)
 from bid_copilot.understanding.alignment.supplement import SupplementResult
 from bid_copilot.understanding.pipeline import run_pipeline
 
 
+def _nodes_from_skeleton(kwargs):
+    """从阶段A 的 input_content 还原骨架 OutlineNode 列表——测试辅助（规范化原样返回骨架）"""
+    import json
+    from bid_copilot.models import OutlineNode
+    try:
+        payload = json.loads(kwargs.get("input_content", "[]"))
+    except Exception:
+        payload = []
+    return [OutlineNode(**n) for n in payload] if isinstance(payload, list) else []
+
+
 class _ScriptedLLM:
-    """按调用顺序返回脚本化结果，模拟各步 LLM 输出"""
+    """脚本化 LLM：merge 三阶段（normalize/attach/dedupe）按 schema 自动应答，其余按 push 顺序返回。
+
+    pipeline 测试只 push 业务步骤（classify/locate/skeleton/requirements/supplement）的返回，
+    merge 内部拆成的多次调用由本类按 schema 兜底，测试无需关心 merge 调了几次。
+    """
     def __init__(self):
         self.script = []
         self.idx = 0
@@ -23,6 +40,13 @@ class _ScriptedLLM:
         self.script.append(result)
 
     def complete(self, **kwargs):
+        schema = kwargs.get("schema")
+        if schema is _NormalizeResult:                       # 阶段A：原样返回骨架
+            return _NormalizeResult(tree=_nodes_from_skeleton(kwargs))
+        if schema is _AttachResult:                          # 阶段B：空判定
+            return _AttachResult()
+        if schema is _DedupeResult:                          # 阶段C：空分组
+            return _DedupeResult()
         r = self.script[self.idx]
         self.idx += 1
         return r
@@ -49,10 +73,7 @@ def test_run_pipeline_end_to_end(tmp_path):
     # extract_skeleton
     llm.push(SkeletonResult(nodes=[OutlineNode(id="1", title="投标函", level=1, sources=[
         SourceRef(type=SourceType.SKELETON, document="fmt.docx", location="一", quote=None)], children=[])]))
-    # merge（无要求条目，直接返回骨架）
-    llm.push(MergeResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[
-        SourceRef(type=SourceType.SKELETON, document="fmt.docx", location="一", quote=None)], children=[])],
-        decisions=[]))
+    # merge 内部三阶段由 _ScriptedLLM 按 schema 兜底（规范化原样返回骨架、无要求可挂），无需 push
     # supplement
     llm.push(SupplementResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[
         SourceRef(type=SourceType.SKELETON, document="fmt.docx", location="一", quote=None)], children=[])]))
@@ -77,30 +98,13 @@ def test_run_pipeline_accepts_explicit_project_name(tmp_path):
     d.add_heading("投标文件格式", level=1)
     d.save(f)
 
-    from bid_copilot.understanding.classify import FileClass, ClassifyResult
-    from bid_copilot.understanding.locate import LocateResult
-    from bid_copilot.understanding.extract_skeleton import SkeletonResult
-    from bid_copilot.understanding.alignment.merge import MergeResult
-    from bid_copilot.understanding.alignment.supplement import SupplementResult
-    from bid_copilot.models import OutlineNode
-
-    class _ScriptedLLM:
-        def __init__(self):
-            self.script = []
-            self.idx = 0
-        def push(self, r):
-            self.script.append(r)
-        def complete(self, **kwargs):
-            r = self.script[self.idx]; self.idx += 1; return r
-
     llm = _ScriptedLLM()
     llm.push(ClassifyResult(file_class=FileClass.BID_FORMAT, confidence=0.9))
     llm.push(LocateResult(bid_format_sections=[0], scoring_sections=[], tech_spec_sections=[], business_sections=[]))
     llm.push(SkeletonResult(nodes=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
-    llm.push(MergeResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])], decisions=[]))
+    # merge 三阶段由 _ScriptedLLM 按 schema 兜底
     llm.push(SupplementResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
 
-    from bid_copilot.understanding.pipeline import run_pipeline
     tree = run_pipeline(src, llm=llm, model_main="m", model_mini="mini",
                         run_dir=tmp_path / "run", project_name="淮能项目")
     assert tree.project_name == "淮能项目"
@@ -116,29 +120,14 @@ def test_pipeline_emits_detail_level_logs(tmp_path):
     d.add_heading("投标文件格式", level=1)
     d.save(f)
 
-    from bid_copilot.understanding.classify import FileClass, ClassifyResult
-    from bid_copilot.understanding.locate import LocateResult
-    from bid_copilot.understanding.extract_skeleton import SkeletonResult
-    from bid_copilot.understanding.alignment.merge import MergeResult
-    from bid_copilot.understanding.alignment.supplement import SupplementResult
-    from bid_copilot.models import OutlineNode
-
-    class _ScriptedLLM:
-        def __init__(self):
-            self.script = []; self.idx = 0
-        def push(self, r): self.script.append(r)
-        def complete(self, **kwargs):
-            r = self.script[self.idx]; self.idx += 1; return r
-
     llm = _ScriptedLLM()
     llm.push(ClassifyResult(file_class=FileClass.BID_FORMAT, confidence=0.9))
     llm.push(LocateResult(bid_format_sections=[0], scoring_sections=[], tech_spec_sections=[], business_sections=[]))
     llm.push(SkeletonResult(nodes=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
-    llm.push(MergeResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])], decisions=[]))
+    # merge 三阶段由 _ScriptedLLM 按 schema 兜底
     llm.push(SupplementResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
 
     events = []
-    from bid_copilot.understanding.pipeline import run_pipeline
     run_pipeline(src, llm=llm, model_main="gpt-5.4", model_mini="gpt-5.4-mini",
                  run_dir=tmp_path / "run", log_callback=lambda e: events.append(e))
 
@@ -162,30 +151,18 @@ def test_pipeline_detail_logs_cover_main_phases(tmp_path):
     d.add_paragraph("一、商务投标文件")
     d.save(f)
 
-    from bid_copilot.understanding.classify import FileClass, ClassifyResult
-    from bid_copilot.understanding.locate import LocateResult
-    from bid_copilot.understanding.extract_skeleton import SkeletonResult
     from bid_copilot.understanding.extract_requirements import RequirementsResult
-    from bid_copilot.understanding.alignment.merge import MergeResult
-    from bid_copilot.understanding.alignment.supplement import SupplementResult
-    from bid_copilot.models import OutlineNode, RequirementItem, SourceType
-
-    class _ScriptedLLM:
-        def __init__(self): self.script = []; self.idx = 0
-        def push(self, r): self.script.append(r)
-        def complete(self, **kwargs):
-            r = self.script[self.idx]; self.idx += 1; return r
+    from bid_copilot.models import RequirementItem
 
     llm = _ScriptedLLM()
     llm.push(ClassifyResult(file_class=FileClass.BID_FORMAT, confidence=0.9))
     llm.push(LocateResult(bid_format_sections=[0], scoring_sections=[0], tech_spec_sections=[], business_sections=[]))
     llm.push(SkeletonResult(nodes=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
     llm.push(RequirementsResult(items=[RequirementItem(ref_id="", description="x", source_type=SourceType.SCORING, location="评1", suggested_title="X")]))
-    llm.push(MergeResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])], decisions=[]))
+    # merge 三阶段由 _ScriptedLLM 按 schema 兜底
     llm.push(SupplementResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
 
     events = []
-    from bid_copilot.understanding.pipeline import run_pipeline
     run_pipeline(src, llm=llm, model_main="gpt-5.4", model_mini="gpt-5.4-mini",
                  run_dir=tmp_path / "run", log_callback=lambda e: events.append(e))
 

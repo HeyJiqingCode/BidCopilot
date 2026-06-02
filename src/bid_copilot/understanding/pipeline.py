@@ -34,6 +34,7 @@ def run_pipeline(
     project_name: Optional[str] = None,
     cu: Any = None,
     efforts: Optional[dict] = None,
+    max_concurrency: int = 5,
 ) -> OutlineTree:
     """执行完整大纲提取管线
 
@@ -49,6 +50,7 @@ def run_pipeline(
         cu: CU 客户端，缺省 None（仅本地抽取）
         efforts: 各步推理强度字典 {classify,locate,skeleton,requirements,merge,supplement}；
                  缺省 None 时各步用自身默认值（维持现状）
+        max_concurrency: 并行上限（extract 章节并行 + merge 阶段B 分批并行共用），默认 5
     返回:
         最终 OutlineTree
     """
@@ -142,7 +144,7 @@ def run_pipeline(
     req_texts = [_gather_span(sections, i) for i in req_indices]
     _log("extract_requirements", "progress",
          f"调用 {model_main} 抽取要求（{len(req_texts)} 个关键章节）", level="detail")
-    requirements = extract_requirements(req_texts, llm=llm, model=model_main, effort=efforts.get("requirements", "medium"))
+    requirements = extract_requirements(req_texts, llm=llm, model=model_main, effort=efforts.get("requirements", "medium"), max_concurrency=max_concurrency)
     # 赋稳定唯一 ref_id，作为归并/覆盖率的关联键（location 非唯一、易被 LLM 改写）
     for idx, req in enumerate(requirements):
         req.ref_id = f"R{idx}"
@@ -155,7 +157,7 @@ def run_pipeline(
     # 7. 归并（覆盖率延后到最终树上统计）
     _log("merge", "start")
     _log("merge", "progress", f"调用 {model_main} 归并 {len(requirements)} 条要求到骨架", level="detail")
-    merged_tree, decisions = merge_requirements(skeleton, requirements, llm=llm, model=model_main, effort=efforts.get("merge", "high"))
+    merged_tree, decisions = merge_requirements(skeleton, requirements, llm=llm, model=model_main, effort=efforts.get("merge", "high"), max_concurrency=max_concurrency)
     _emit("merge", {"tree": [n.model_dump() for n in merged_tree]})
     _log("merge", "done", f"归并完成：{len(merged_tree)} 个顶层标题")
 
