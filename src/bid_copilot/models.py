@@ -31,7 +31,6 @@ class OutlineNode(BaseModel):
     level: int                             # 层级 1/2/3，映射 Word Heading
     sources: list[SourceRef] = Field(default_factory=list)  # 多来源
     children: list["OutlineNode"] = Field(default_factory=list)  # 子节点
-    note: Optional[str] = None             # 应答提示（可选）
 
 
 class CoverageReport(BaseModel):

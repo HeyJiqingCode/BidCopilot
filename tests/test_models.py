@@ -11,7 +11,7 @@ def test_outline_node_nested():
         id="1.1", title="投标函", level=2,
         sources=[SourceRef(type=SourceType.SKELETON, document="格式.docx",
                            location="一、投标函", quote=None)],
-        children=[], note=None,
+        children=[],
     )
     parent = OutlineNode(
         id="1", title="商务部分", level=1,
@@ -19,7 +19,7 @@ def test_outline_node_nested():
             SourceRef(type=SourceType.SKELETON, document="格式.docx", location="一", quote=None),
             SourceRef(type=SourceType.SCORING, document="评分.pdf", location="第3条", quote="提供..."),
         ],
-        children=[child], note=None,
+        children=[child],
     )
     assert parent.children[0].title == "投标函"
     assert len(parent.sources) == 2  # 多来源
@@ -41,7 +41,7 @@ def test_outline_tree_serializable():
     tree = OutlineTree(
         project_name="测试项目",
         source_documents=["a.docx"],
-        nodes=[OutlineNode(id="1", title="X", level=1, sources=[], children=[], note=None)],
+        nodes=[OutlineNode(id="1", title="X", level=1, sources=[], children=[])],
         coverage=CoverageReport(total_scoring_items=0, mapped_scoring_items=0,
                                 total_tech_items=0, mapped_tech_items=0, unmapped=[]),
     )

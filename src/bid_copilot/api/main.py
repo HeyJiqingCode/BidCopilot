@@ -254,15 +254,6 @@ def export(run_id: str, keep_ai_marks: bool = False) -> FileResponse:
                         filename="投标文件大纲.docx")
 
 
-@app.get("/api/runs/{run_id}/steps/{step}")
-def get_step(run_id: str, step: str) -> FileResponse:
-    """返回某步中间产物 JSON——讲原理用"""
-    path = RUNS_DIR / run_id / f"{step}.json"
-    if not path.exists():
-        raise HTTPException(404, "step not found")
-    return FileResponse(str(path), media_type="application/json")
-
-
 @app.get("/api/runs")
 def list_runs() -> JSONResponse:
     """列出所有 run（已完成的读 meta.json 带 status=done；正在跑的从 PROGRESS_QUEUES 补 status=running）——按时间倒序"""
