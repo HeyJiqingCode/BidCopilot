@@ -210,16 +210,29 @@ async def get_step(run_id: str, step: str) -> FileResponse:
 
 @app.get("/api/runs")
 async def list_runs() -> JSONResponse:
-    """列出所有历史 run（读各 run 的 meta.json，按创建时间倒序）——返回 JSON 数组"""
+    """列出所有 run（已完成的读 meta.json 带 status=done；正在跑的从 PROGRESS_QUEUES 补 status=running）——按时间倒序"""
     items: list[dict] = []
+    done_ids: set[str] = set()
     if RUNS_DIR.exists():
         for d in RUNS_DIR.iterdir():
             meta_path = d / "meta.json"
             if meta_path.exists():
                 try:
-                    items.append(json.loads(meta_path.read_text(encoding="utf-8")))
+                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                    meta["status"] = "done"          # 有 meta.json = 已完成
+                    items.append(meta)
+                    done_ids.add(meta.get("run_id", d.name))
                 except Exception:
                     continue  # 跳过损坏的 meta.json，不让单个坏文件拖垮整个历史列表
+    # 补上正在跑、尚未落盘 meta 的 run（运行中）
+    for run_id in list(PROGRESS_QUEUES.keys()):
+        if run_id in done_ids:
+            continue
+        input_dir = UPLOAD_STORE.get(run_id)
+        names = sorted(p.name for p in input_dir.iterdir()) if input_dir and input_dir.is_dir() else []
+        proj = Path(names[0]).stem if names else run_id
+        items.append({"run_id": run_id, "project_name": proj, "filenames": names,
+                      "created_at": int(time.time()), "coverage": None, "status": "running"})
     items.sort(key=lambda m: m.get("created_at", 0), reverse=True)
     return JSONResponse(items)
 

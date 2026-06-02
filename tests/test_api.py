@@ -203,3 +203,37 @@ def test_runs_list_and_logs_and_tree_fallback(monkeypatch, tmp_path):
     tree = client.get(f"/api/tree/{run_id}")
     assert tree.status_code == 200
     assert tree.json()["nodes"][0]["title"] == "投标函"
+
+
+def test_runs_list_includes_status(monkeypatch, tmp_path):
+    """/api/runs 给已完成 run 带 status=done；运行中（PROGRESS_QUEUES 有、无 meta）带 status=running"""
+    monkeypatch.setattr(api_main, "RUNS_DIR", tmp_path)
+
+    def fake_run(input_path, llm, model_main, model_mini, run_dir, log_callback, project_name=None, cu=None, efforts=None, max_concurrency=5, models=None):
+        log_callback({"phase": "finalize", "status": "done", "message": "完成"})
+        return _fake_tree()
+
+    monkeypatch.setattr(api_main, "run_pipeline", fake_run)
+
+    client = TestClient(api_main.app)
+    files = [("files", ("a.docx", io.BytesIO(b"x"), "application/octet-stream"))]
+    run_id = client.post("/api/upload", files=files).json()["run_id"]
+    client.post(f"/api/run/{run_id}")
+    with client.stream("GET", f"/api/progress/{run_id}") as resp:
+        "".join(resp.iter_text())   # 跑完，落 meta.json
+
+    runs = client.get("/api/runs").json()
+    me = next(r for r in runs if r["run_id"] == run_id)
+    assert me["status"] == "done"           # 已完成
+
+    # 模拟一个运行中的 run：直接往 PROGRESS_QUEUES 塞队列、UPLOAD_STORE 塞目录
+    import queue
+    api_main.PROGRESS_QUEUES["live123"] = queue.Queue()
+    api_main.UPLOAD_STORE["live123"] = tmp_path
+    try:
+        runs2 = client.get("/api/runs").json()
+        live = next(r for r in runs2 if r["run_id"] == "live123")
+        assert live["status"] == "running"
+    finally:
+        api_main.PROGRESS_QUEUES.pop("live123", None)
+        api_main.UPLOAD_STORE.pop("live123", None)

@@ -85,6 +85,11 @@ function app() {
       } catch (e) { this.history = []; }
     },
 
+    // 运行中的 run（左侧栏「运行中」分组）
+    get runningRuns() { return this.history.filter(h => h.status === "running"); },
+    // 已完成的 run（左侧栏「已完成」分组）
+    get doneRuns() { return this.history.filter(h => h.status !== "running"); },
+
     async onFile(e) {
       const picked = Array.from(e.target.files || []);
       if (!picked.length) return;
@@ -126,6 +131,7 @@ function app() {
         this.running = false;
         return;
       }
+      this.loadHistory();          // 立刻刷新左侧栏，让新任务出现在「运行中」分组
       this._listenProgress(this.runId);
     },
 
@@ -187,18 +193,29 @@ function app() {
       this.phases.forEach(p => { if (p.logs.length) this.expanded[p.key] = target; });
     },
 
-    // 点击历史项：回看模式，加载日志+树
+    // 点击左侧栏的 run：运行中→重连看实时进度；已完成→回看日志+树
     async openHistory(runId) {
-      this.viewing = runId; this.running = false; this.errorMsg = "";
+      const item = this.history.find(h => h.run_id === runId);
+      const isRunning = item && item.status === "running";
+      this.viewing = runId; this.errorMsg = "";
       this.initPhases();
+      // 先补已落盘的历史日志，恢复已跑阶段状态
       try {
         const events = await (await fetch(`/api/runs/${runId}/logs`)).json();
         events.forEach(ev => this.applyPhaseEvent(ev));
-        // 回看启发式：有日志的阶段视为已完成（meta.json 仅成功时落盘，出错的 run 一般不入列表）
+      } catch (e) { /* 运行中可能暂无日志，忽略 */ }
+
+      if (isRunning) {
+        // 运行中：重连 SSE 接后续进度，跑完自动出树（_listenProgress 内处理）
+        this.running = true; this.runId = runId; this.tree = null;
+        this._listenProgress(runId);
+      } else {
+        // 已完成：有日志的阶段视为已完成，加载结果树
+        this.running = false;
         this.phases.forEach(p => { if (p.logs.length) p.status = "done"; });
-        this.tree = await (await fetch(`/api/tree/${runId}`)).json();
-      } catch (e) {
-        this.errorMsg = "加载历史记录失败";
+        try {
+          this.tree = await (await fetch(`/api/tree/${runId}`)).json();
+        } catch (e) { this.errorMsg = "加载历史记录失败"; }
       }
     },
 
