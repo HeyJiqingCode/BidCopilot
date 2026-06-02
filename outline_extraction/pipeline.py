@@ -58,17 +58,18 @@ def run_pipeline(
             progress_callback(step, payload)
         _dump(run_dir, step, payload)
 
-    def _log(phase: str, status: str, message: str = "") -> None:
+    def _log(phase: str, status: str, message: str = "", level: str = "main") -> None:
         """发阶段级结构化日志——内部辅助
 
         参数:
             phase: 阶段名
-            status: start（开始）/ done（完成，带产物摘要）
+            status: start（开始）/ progress（阶段内子进度）/ done（完成摘要）
             message: 中文摘要
+            level: main（阶段主摘要）/ detail（细粒度子进度），供前端分样式
         返回: 无
         """
         if log_callback:
-            log_callback({"phase": phase, "status": status, "message": message})
+            log_callback({"phase": phase, "status": status, "message": message, "level": level})
 
     # 1. 解析
     _log("parse", "start")
@@ -80,6 +81,8 @@ def run_pipeline(
 
     # 2. 分类
     _log("classify", "start")
+    for i, doc in enumerate(docs, 1):
+        _log("classify", "progress", f"调用 {model_mini} 分类《{doc.filename}》（{i}/{len(docs)}）", level="detail")
     classes = classify_documents(docs, llm=llm, model=model_mini)
     _emit("classify", {k: v.model_dump() for k, v in classes.items()})
     class_stat = ", ".join(f"{cls}×{cnt}" for cls, cnt in
