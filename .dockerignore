@@ -1,0 +1,28 @@
+# 虚拟环境 / 字节码
+.venv/
+__pycache__/
+*.pyc
+
+# 密钥与本地配置（绝不进镜像；Container Apps 用 secrets/env 注入）
+.env
+
+# 运行产物与样例数据（运行时生成 / 体积大，不进镜像）
+runs/
+docs/
+
+# 测试与脚本（运行镜像不需要）
+tests/
+scripts/
+pytest.ini
+
+# 工具/版本控制/系统文件
+.git/
+.gitignore
+.dockerignore
+Dockerfile
+.DS_Store
+.playwright-mcp/
+.claude/
+
+# 文档/计划
+*.md
