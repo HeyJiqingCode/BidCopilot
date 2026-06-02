@@ -7,3 +7,4 @@ runs/
 docs/
 *.egg-info/
 .pytest_cache/
+.playwright-mcp/
