@@ -1,16 +1,16 @@
 """端到端管线测试——真实解析 + fake LLM"""
 from pathlib import Path
 import docx
-from outline_extraction.models import (
+from bid_copilot.models import (
     OutlineNode, SourceRef, SourceType, RequirementItem,
 )
-from outline_extraction.understanding.classify import FileClass, ClassifyResult
-from outline_extraction.understanding.locate import LocateResult
-from outline_extraction.understanding.extract_skeleton import SkeletonResult
-from outline_extraction.understanding.extract_requirements import RequirementsResult
-from outline_extraction.alignment.merge import MergeResult, MergeDecision, Disposition
-from outline_extraction.alignment.supplement import SupplementResult
-from outline_extraction.pipeline import run_pipeline
+from bid_copilot.understanding.classify import FileClass, ClassifyResult
+from bid_copilot.understanding.locate import LocateResult
+from bid_copilot.understanding.extract_skeleton import SkeletonResult
+from bid_copilot.understanding.extract_requirements import RequirementsResult
+from bid_copilot.understanding.alignment.merge import MergeResult, MergeDecision, Disposition
+from bid_copilot.understanding.alignment.supplement import SupplementResult
+from bid_copilot.understanding.pipeline import run_pipeline
 
 
 class _ScriptedLLM:
@@ -77,12 +77,12 @@ def test_run_pipeline_accepts_explicit_project_name(tmp_path):
     d.add_heading("投标文件格式", level=1)
     d.save(f)
 
-    from outline_extraction.understanding.classify import FileClass, ClassifyResult
-    from outline_extraction.understanding.locate import LocateResult
-    from outline_extraction.understanding.extract_skeleton import SkeletonResult
-    from outline_extraction.alignment.merge import MergeResult
-    from outline_extraction.alignment.supplement import SupplementResult
-    from outline_extraction.models import OutlineNode
+    from bid_copilot.understanding.classify import FileClass, ClassifyResult
+    from bid_copilot.understanding.locate import LocateResult
+    from bid_copilot.understanding.extract_skeleton import SkeletonResult
+    from bid_copilot.understanding.alignment.merge import MergeResult
+    from bid_copilot.understanding.alignment.supplement import SupplementResult
+    from bid_copilot.models import OutlineNode
 
     class _ScriptedLLM:
         def __init__(self):
@@ -100,7 +100,7 @@ def test_run_pipeline_accepts_explicit_project_name(tmp_path):
     llm.push(MergeResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])], decisions=[]))
     llm.push(SupplementResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
 
-    from outline_extraction.pipeline import run_pipeline
+    from bid_copilot.understanding.pipeline import run_pipeline
     tree = run_pipeline(src, llm=llm, model_main="m", model_mini="mini",
                         run_dir=tmp_path / "run", project_name="淮能项目")
     assert tree.project_name == "淮能项目"
@@ -116,12 +116,12 @@ def test_pipeline_emits_detail_level_logs(tmp_path):
     d.add_heading("投标文件格式", level=1)
     d.save(f)
 
-    from outline_extraction.understanding.classify import FileClass, ClassifyResult
-    from outline_extraction.understanding.locate import LocateResult
-    from outline_extraction.understanding.extract_skeleton import SkeletonResult
-    from outline_extraction.alignment.merge import MergeResult
-    from outline_extraction.alignment.supplement import SupplementResult
-    from outline_extraction.models import OutlineNode
+    from bid_copilot.understanding.classify import FileClass, ClassifyResult
+    from bid_copilot.understanding.locate import LocateResult
+    from bid_copilot.understanding.extract_skeleton import SkeletonResult
+    from bid_copilot.understanding.alignment.merge import MergeResult
+    from bid_copilot.understanding.alignment.supplement import SupplementResult
+    from bid_copilot.models import OutlineNode
 
     class _ScriptedLLM:
         def __init__(self):
@@ -138,7 +138,7 @@ def test_pipeline_emits_detail_level_logs(tmp_path):
     llm.push(SupplementResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
 
     events = []
-    from outline_extraction.pipeline import run_pipeline
+    from bid_copilot.understanding.pipeline import run_pipeline
     run_pipeline(src, llm=llm, model_main="gpt-5.4", model_mini="gpt-5.4-mini",
                  run_dir=tmp_path / "run", log_callback=lambda e: events.append(e))
 
@@ -162,13 +162,13 @@ def test_pipeline_detail_logs_cover_main_phases(tmp_path):
     d.add_paragraph("一、商务投标文件")
     d.save(f)
 
-    from outline_extraction.understanding.classify import FileClass, ClassifyResult
-    from outline_extraction.understanding.locate import LocateResult
-    from outline_extraction.understanding.extract_skeleton import SkeletonResult
-    from outline_extraction.understanding.extract_requirements import RequirementsResult
-    from outline_extraction.alignment.merge import MergeResult
-    from outline_extraction.alignment.supplement import SupplementResult
-    from outline_extraction.models import OutlineNode, RequirementItem, SourceType
+    from bid_copilot.understanding.classify import FileClass, ClassifyResult
+    from bid_copilot.understanding.locate import LocateResult
+    from bid_copilot.understanding.extract_skeleton import SkeletonResult
+    from bid_copilot.understanding.extract_requirements import RequirementsResult
+    from bid_copilot.understanding.alignment.merge import MergeResult
+    from bid_copilot.understanding.alignment.supplement import SupplementResult
+    from bid_copilot.models import OutlineNode, RequirementItem, SourceType
 
     class _ScriptedLLM:
         def __init__(self): self.script = []; self.idx = 0
@@ -185,7 +185,7 @@ def test_pipeline_detail_logs_cover_main_phases(tmp_path):
     llm.push(SupplementResult(tree=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
 
     events = []
-    from outline_extraction.pipeline import run_pipeline
+    from bid_copilot.understanding.pipeline import run_pipeline
     run_pipeline(src, llm=llm, model_main="gpt-5.4", model_mini="gpt-5.4-mini",
                  run_dir=tmp_path / "run", log_callback=lambda e: events.append(e))
 

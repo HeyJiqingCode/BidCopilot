@@ -1,7 +1,7 @@
 """Word 导出——OutlineTree 遍历为多级标题 docx"""
 from pathlib import Path
 import docx
-from outline_extraction.models import OutlineTree, OutlineNode, SourceType
+from bid_copilot.models import OutlineTree, OutlineNode, SourceType
 
 
 def export_to_docx(tree: OutlineTree, output_path: Path, keep_ai_marks: bool = False) -> Path:

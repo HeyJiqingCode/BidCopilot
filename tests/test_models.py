@@ -1,5 +1,5 @@
 """数据模型测试"""
-from outline_extraction.models import (
+from bid_copilot.models import (
     SourceType, SourceRef, OutlineNode, OutlineTree, CoverageReport,
     ParsedDocument, Section, RequirementItem,
 )

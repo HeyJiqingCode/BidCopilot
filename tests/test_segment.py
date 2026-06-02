@@ -1,5 +1,5 @@
 """章节切分测试"""
-from outline_extraction.understanding.segment import segment_text
+from bid_copilot.understanding.segment import segment_text
 
 
 def test_segment_chapter_and_subsection():

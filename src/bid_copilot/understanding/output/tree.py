@@ -1,5 +1,5 @@
 """大纲树后处理——路径式稳定 id 重整"""
-from outline_extraction.models import OutlineNode
+from bid_copilot.models import OutlineNode
 
 
 def finalize_ids(nodes: list[OutlineNode], prefix: str = "") -> list[OutlineNode]:

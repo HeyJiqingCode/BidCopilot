@@ -1,8 +1,8 @@
 """Word 导出测试"""
 from pathlib import Path
 import docx
-from outline_extraction.models import OutlineTree, OutlineNode, SourceRef, SourceType, CoverageReport
-from outline_extraction.output.word_export import export_to_docx
+from bid_copilot.models import OutlineTree, OutlineNode, SourceRef, SourceType, CoverageReport
+from bid_copilot.understanding.output.word_export import export_to_docx
 
 
 def _tree():

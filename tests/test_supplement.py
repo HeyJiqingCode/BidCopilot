@@ -1,6 +1,6 @@
 """生成式兜底测试——注入 fake LLM"""
-from outline_extraction.models import OutlineNode, SourceRef, SourceType
-from outline_extraction.alignment.supplement import supplement_tree, SupplementResult
+from bid_copilot.models import OutlineNode, SourceRef, SourceType
+from bid_copilot.understanding.alignment.supplement import supplement_tree, SupplementResult
 
 
 class _FakeLLM:

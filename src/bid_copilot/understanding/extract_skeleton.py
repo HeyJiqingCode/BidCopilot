@@ -1,7 +1,7 @@
 """显式骨架抽取——把"投标文件格式"章节忠实抽成 OutlineNode 树"""
 from pathlib import Path
 from pydantic import BaseModel, Field
-from outline_extraction.models import OutlineNode
+from bid_copilot.models import OutlineNode
 
 _PROMPT_PATH = Path(__file__).parent.parent / "llm" / "prompts" / "extract_skeleton.txt"
 

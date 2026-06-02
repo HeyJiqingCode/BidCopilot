@@ -1,6 +1,6 @@
 """LLMClient 封装测试——用 fake responses 客户端验证调用拼装与解析"""
 from pydantic import BaseModel
-from outline_extraction.llm.client import LLMClient
+from bid_copilot.llm.client import LLMClient
 
 
 class _Out(BaseModel):

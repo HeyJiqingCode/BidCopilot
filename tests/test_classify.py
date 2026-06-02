@@ -1,6 +1,6 @@
 """文件分类测试——注入 fake LLM"""
-from outline_extraction.models import ParsedDocument, SourceType
-from outline_extraction.understanding.classify import classify_documents, FileClass, ClassifyResult
+from bid_copilot.models import ParsedDocument, SourceType
+from bid_copilot.understanding.classify import classify_documents, FileClass, ClassifyResult
 
 
 class _FakeLLM:

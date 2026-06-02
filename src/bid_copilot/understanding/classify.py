@@ -2,7 +2,7 @@
 from enum import Enum
 from pathlib import Path
 from pydantic import BaseModel
-from outline_extraction.models import ParsedDocument
+from bid_copilot.models import ParsedDocument
 
 # 喂给 LLM 的正文前缀长度
 _PREVIEW_CHARS = 1500

@@ -1,7 +1,7 @@
 """定位关键章节——用 5.4 语义识别投标格式/评分/技术/商务章节位置"""
 from pathlib import Path
 from pydantic import BaseModel, Field
-from outline_extraction.models import Section
+from bid_copilot.models import Section
 
 _PROMPT_PATH = Path(__file__).parent.parent / "llm" / "prompts" / "locate.txt"
 # 每个章节摘要截断长度

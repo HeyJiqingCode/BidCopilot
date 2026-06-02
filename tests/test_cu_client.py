@@ -1,5 +1,5 @@
 """Content Understanding 客户端测试——注入 fake/mock，不打真实服务"""
-from outline_extraction.parsing.cu_client import analyze_with_cu, CUResult, CUClient
+from bid_copilot.parsing.cu_client import analyze_with_cu, CUResult, CUClient
 
 
 class _FakeCU:
@@ -21,7 +21,7 @@ def test_analyze_none_client_returns_empty(tmp_path):
 
 
 def test_cuclient_analyze_polls_and_reads_markdown(tmp_path, monkeypatch):
-    import outline_extraction.parsing.cu_client as cu_mod
+    import bid_copilot.parsing.cu_client as cu_mod
     posted = {}
     class _Resp:
         def __init__(self, status_code=200, headers=None, payload=None):

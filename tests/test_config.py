@@ -1,6 +1,6 @@
 """配置加载测试"""
 import os
-from outline_extraction.config import Settings
+from bid_copilot.config import Settings
 
 
 def test_settings_from_env(monkeypatch):

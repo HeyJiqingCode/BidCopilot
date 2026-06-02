@@ -1,9 +1,9 @@
 """用可见标的跑真实管线，打印大纲树——demo/验证入口"""
 import sys
 from pathlib import Path
-from outline_extraction.config import Settings
-from outline_extraction.llm.client import LLMClient
-from outline_extraction.pipeline import run_pipeline
+from bid_copilot.config import Settings
+from bid_copilot.llm.client import LLMClient
+from bid_copilot.understanding.pipeline import run_pipeline
 
 
 def _print_tree(nodes, indent=0):
@@ -19,7 +19,7 @@ def main():
     target = Path(sys.argv[1])
     settings = Settings()
     llm = LLMClient(settings=settings)
-    from outline_extraction.parsing.cu_client import build_cu_client
+    from bid_copilot.parsing.cu_client import build_cu_client
     cu = build_cu_client(settings.cu_endpoint, settings.cu_key)
     tree = run_pipeline(
         target, llm=llm, model_main=settings.model_main, model_mini=settings.model_mini,

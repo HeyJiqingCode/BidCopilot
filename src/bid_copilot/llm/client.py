@@ -2,7 +2,7 @@
 from typing import Optional, Type, Any
 from pydantic import BaseModel
 from openai import OpenAI
-from outline_extraction.config import Settings
+from bid_copilot.config import Settings
 
 
 class LLMClient:

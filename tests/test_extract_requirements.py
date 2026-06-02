@@ -1,6 +1,6 @@
 """要求条目抽取测试——注入 fake LLM"""
-from outline_extraction.models import RequirementItem, SourceType
-from outline_extraction.understanding.extract_requirements import (
+from bid_copilot.models import RequirementItem, SourceType
+from bid_copilot.understanding.extract_requirements import (
     extract_requirements, RequirementsResult,
 )
 

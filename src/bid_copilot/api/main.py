@@ -10,11 +10,11 @@ from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from outline_extraction.config import Settings
-from outline_extraction.llm.client import LLMClient
-from outline_extraction.pipeline import run_pipeline
-from outline_extraction.models import OutlineTree
-from outline_extraction.output.word_export import export_to_docx
+from bid_copilot.config import Settings
+from bid_copilot.llm.client import LLMClient
+from bid_copilot.understanding.pipeline import run_pipeline
+from bid_copilot.models import OutlineTree
+from bid_copilot.understanding.output.word_export import export_to_docx
 
 app = FastAPI(title="招标大纲提取 Demo")
 
@@ -80,7 +80,7 @@ async def run(run_id: str) -> JSONResponse:
             input_dir = UPLOAD_STORE[run_id]
             names = sorted(p.name for p in input_dir.iterdir()) if input_dir.is_dir() else [input_dir.name]
             proj = Path(names[0]).stem if names else run_id
-            from outline_extraction.parsing.cu_client import build_cu_client
+            from bid_copilot.parsing.cu_client import build_cu_client
             cu = build_cu_client(settings.cu_endpoint, settings.cu_key)
             tree = run_pipeline(
                 input_dir, llm=llm,

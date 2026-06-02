@@ -1,6 +1,6 @@
 """定位关键章节测试——注入 fake LLM"""
-from outline_extraction.models import Section
-from outline_extraction.understanding.locate import locate_sections, LocateResult
+from bid_copilot.models import Section
+from bid_copilot.understanding.locate import locate_sections, LocateResult
 
 
 class _FakeLLM:

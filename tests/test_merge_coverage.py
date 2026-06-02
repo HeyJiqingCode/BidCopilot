@@ -1,8 +1,8 @@
 """归并与覆盖率统计测试"""
-from outline_extraction.models import (
+from bid_copilot.models import (
     OutlineNode, SourceRef, SourceType, RequirementItem,
 )
-from outline_extraction.alignment.merge import merge_requirements, MergeResult, Disposition, MergeDecision, compute_coverage
+from bid_copilot.understanding.alignment.merge import merge_requirements, MergeResult, Disposition, MergeDecision, compute_coverage
 
 
 class _FakeLLM:

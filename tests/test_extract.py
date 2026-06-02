@@ -1,7 +1,7 @@
 """文本抽取测试"""
 from pathlib import Path
 import docx
-from outline_extraction.parsing.extract import extract_document, _is_scanned
+from bid_copilot.parsing.extract import extract_document, _is_scanned
 
 
 def test_extract_docx(tmp_path):
@@ -89,7 +89,7 @@ def test_extract_docx_does_not_use_cu(tmp_path):
 
 def test_extract_doc_uses_cu_when_available(tmp_path):
     """.doc 走 CU，extract_method 标为 cu"""
-    from outline_extraction.parsing.cu_client import CUResult
+    from bid_copilot.parsing.cu_client import CUResult
     p = tmp_path / "b.doc"; p.write_bytes(b"\xd0\xcf fake")
     class _FakeCU:
         def analyze(self, fp): return CUResult(markdown="# 标题\n| a | b |\n| --- | --- |", page_count=None)

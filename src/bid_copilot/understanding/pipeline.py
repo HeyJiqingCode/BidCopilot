@@ -3,17 +3,17 @@ import json
 from collections import Counter
 from pathlib import Path
 from typing import Callable, Optional, Any
-from outline_extraction.models import OutlineTree, ParsedDocument, Section, OutlineNode, SourceType
-from outline_extraction.parsing.unpack import collect_files
-from outline_extraction.parsing.extract import extract_document
-from outline_extraction.understanding.classify import classify_documents
-from outline_extraction.understanding.segment import segment_text
-from outline_extraction.understanding.locate import locate_sections
-from outline_extraction.understanding.extract_skeleton import extract_skeleton
-from outline_extraction.understanding.extract_requirements import extract_requirements
-from outline_extraction.alignment.merge import merge_requirements, compute_coverage, Disposition
-from outline_extraction.alignment.supplement import supplement_tree
-from outline_extraction.output.tree import finalize_ids
+from bid_copilot.models import OutlineTree, ParsedDocument, Section, OutlineNode, SourceType
+from bid_copilot.parsing.unpack import collect_files
+from bid_copilot.parsing.extract import extract_document
+from bid_copilot.understanding.classify import classify_documents
+from bid_copilot.understanding.segment import segment_text
+from bid_copilot.understanding.locate import locate_sections
+from bid_copilot.understanding.extract_skeleton import extract_skeleton
+from bid_copilot.understanding.extract_requirements import extract_requirements
+from bid_copilot.understanding.alignment.merge import merge_requirements, compute_coverage, Disposition
+from bid_copilot.understanding.alignment.supplement import supplement_tree
+from bid_copilot.understanding.output.tree import finalize_ids
 
 # 来源类型 → 中文标签（日志摘要用）
 _SOURCE_LABELS = {

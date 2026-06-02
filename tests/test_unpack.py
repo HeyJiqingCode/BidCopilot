@@ -1,7 +1,7 @@
 """文件解压/遍历测试"""
 import zipfile
 from pathlib import Path
-from outline_extraction.parsing.unpack import collect_files
+from bid_copilot.parsing.unpack import collect_files
 
 
 def test_collect_from_directory(tmp_path):

@@ -1,6 +1,6 @@
 """树排序与 id 重整测试"""
-from outline_extraction.models import OutlineNode, SourceRef, SourceType
-from outline_extraction.output.tree import finalize_ids
+from bid_copilot.models import OutlineNode, SourceRef, SourceType
+from bid_copilot.understanding.output.tree import finalize_ids
 
 
 def _node(title, level, children=None):

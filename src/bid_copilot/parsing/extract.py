@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import Any
 import docx
 import pdfplumber
-from outline_extraction.models import ParsedDocument
-from outline_extraction.parsing.cu_client import analyze_with_cu
+from bid_copilot.models import ParsedDocument
+from bid_copilot.parsing.cu_client import analyze_with_cu
 
 # 扫描件判定阈值：每页平均字符数低于此值视为扫描件
 _SCANNED_CHARS_PER_PAGE = 50

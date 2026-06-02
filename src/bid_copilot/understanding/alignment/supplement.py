@@ -2,9 +2,9 @@
 import json
 from pathlib import Path
 from pydantic import BaseModel, Field
-from outline_extraction.models import OutlineNode
+from bid_copilot.models import OutlineNode
 
-_PROMPT_PATH = Path(__file__).parent.parent / "llm" / "prompts" / "supplement.txt"
+_PROMPT_PATH = Path(__file__).parent.parent.parent / "llm" / "prompts" / "supplement.txt"
 
 
 class SupplementResult(BaseModel):

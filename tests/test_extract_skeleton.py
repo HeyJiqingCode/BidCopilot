@@ -1,6 +1,6 @@
 """显式骨架抽取测试——注入 fake LLM 返回 OutlineNode 树"""
-from outline_extraction.models import OutlineNode, SourceRef, SourceType
-from outline_extraction.understanding.extract_skeleton import extract_skeleton, SkeletonResult
+from bid_copilot.models import OutlineNode, SourceRef, SourceType
+from bid_copilot.understanding.extract_skeleton import extract_skeleton, SkeletonResult
 
 
 class _FakeLLM:

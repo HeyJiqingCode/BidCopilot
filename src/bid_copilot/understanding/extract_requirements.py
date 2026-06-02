@@ -1,7 +1,7 @@
 """要求条目抽取——把评分/技术章节逐条抽成 RequirementItem"""
 from pathlib import Path
 from pydantic import BaseModel, Field
-from outline_extraction.models import RequirementItem
+from bid_copilot.models import RequirementItem
 
 _PROMPT_PATH = Path(__file__).parent.parent / "llm" / "prompts" / "extract_requirements.txt"
 

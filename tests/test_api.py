@@ -1,8 +1,8 @@
 """API 测试——monkeypatch 掉真实管线"""
 import io
 from fastapi.testclient import TestClient
-from outline_extraction.api import main as api_main
-from outline_extraction.models import OutlineTree, OutlineNode, CoverageReport
+from bid_copilot.api import main as api_main
+from bid_copilot.models import OutlineTree, OutlineNode, CoverageReport
 
 
 def _fake_tree():

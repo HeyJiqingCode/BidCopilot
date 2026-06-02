@@ -4,11 +4,11 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel, Field
-from outline_extraction.models import (
+from bid_copilot.models import (
     OutlineNode, RequirementItem, CoverageReport, SourceType,
 )
 
-_PROMPT_PATH = Path(__file__).parent.parent / "llm" / "prompts" / "merge.txt"
+_PROMPT_PATH = Path(__file__).parent.parent.parent / "llm" / "prompts" / "merge.txt"
 
 
 class Disposition(str, Enum):

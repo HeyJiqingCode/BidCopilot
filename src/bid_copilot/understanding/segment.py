@@ -1,6 +1,6 @@
 """章节切分——正则优先识别中文招标编号体系"""
 import re
-from outline_extraction.models import Section
+from bid_copilot.models import Section
 
 # 编号模式 → 层级。顺序即优先级，先匹配先生效。
 _PATTERNS: list[tuple[re.Pattern, int]] = [
