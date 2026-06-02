@@ -103,6 +103,26 @@ def test_upload_multiple_files_stores_dir(monkeypatch, tmp_path):
     assert up.json()["filenames"] == ["tech.docx", "biz.docx"]
 
 
+def test_export_falls_back_to_finalize_json(monkeypatch, tmp_path):
+    """TREE_STORE 没有该 run 时，导出应从 finalize.json 兜底重建大纲树并产出 docx"""
+    monkeypatch.setattr(api_main, "RUNS_DIR", tmp_path)
+    run_id = "restartedrun"
+    run_dir = tmp_path / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    import json as _j
+    (run_dir / "finalize.json").write_text(
+        _j.dumps(_fake_tree().model_dump(), ensure_ascii=False), encoding="utf-8")
+    # 确保内存里没有该 run（模拟服务重启）
+    api_main.TREE_STORE.pop(run_id, None)
+
+    client = TestClient(api_main.app)
+    resp = client.get(f"/api/export/{run_id}.docx")
+    assert resp.status_code == 200
+    assert len(resp.content) > 0
+    # docx 是 zip 容器，magic number 以 PK 开头
+    assert resp.content[:2] == b"PK"
+
+
 def test_runs_list_and_logs_and_tree_fallback(monkeypatch, tmp_path):
     """落盘 logs.jsonl+meta.json 后：/api/runs 列出、/logs 读取、tree 从 finalize 兜底"""
     monkeypatch.setattr(api_main, "RUNS_DIR", tmp_path)
