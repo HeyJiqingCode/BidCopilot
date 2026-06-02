@@ -116,26 +116,42 @@ function app() {
     },
 
     async run() {
-      if (!this.runId) return;
+      if (!this.runId || this.running) return;   // 防重入：已在跑直接 return
       this.viewing = null;
       this.running = true; this.errorMsg = ""; this.tree = null;
       this.initPhases();
-      await fetch(`/api/run/${this.runId}`, { method: "POST" });
-      const es = new EventSource(`/api/progress/${this.runId}`);
+      const resp = await fetch(`/api/run/${this.runId}`, { method: "POST" });
+      if (!resp.ok) {                                   // 409 等：已在跑/已完成
+        if (resp.status === 409) { this._listenProgress(this.runId); return; }
+        this.running = false;
+        return;
+      }
+      this._listenProgress(this.runId);
+    },
+
+    // 接收某 run 的 SSE 进度事件
+    _listenProgress(runId) {
+      let finished = false;   // 标记是否已正常收尾（done/error），避免 onerror 误复位 running
+      const es = new EventSource(`/api/progress/${runId}`);
       es.onmessage = async (e) => {
         const ev = JSON.parse(e.data);
         if (ev.event === "done") {
-          es.close();
-          this.tree = await (await fetch(`/api/tree/${this.runId}`)).json();
+          finished = true; es.close();
+          this.tree = await (await fetch(`/api/tree/${runId}`)).json();
           this.running = false;
           this.loadHistory();
         } else if (ev.event === "error") {
-          es.close(); this.errorMsg = ev.message || "运行出错"; this.running = false;
+          finished = true; es.close();
+          this.errorMsg = ev.message || "运行出错"; this.running = false;
         } else {
           this.applyPhaseEvent(ev);
         }
       };
-      es.onerror = () => { es.close(); this.running = false; };
+      // onerror 只在「尚未正常收尾」时才复位；正常 done 后的 close 不应让上传区重现（这是重复发起的根因）
+      es.onerror = () => {
+        es.close();
+        if (!finished) this.running = false;
+      };
     },
 
     applyPhaseEvent(ev) {

@@ -70,6 +70,9 @@ async def run(run_id: str) -> JSONResponse:
     """启动管线（非阻塞）：后台线程执行，日志事件入队供 SSE 流式推送"""
     if run_id not in UPLOAD_STORE:
         raise HTTPException(404, "unknown run_id")
+    # 防重入：已在运行（队列存在且未收尾）或已完成（有结果）则拒绝重复发起，避免重头跑
+    if run_id in PROGRESS_QUEUES or run_id in TREE_STORE or (RUNS_DIR / run_id / "finalize.json").exists():
+        raise HTTPException(409, "run already started or finished")
     q: queue.Queue = queue.Queue()
     PROGRESS_QUEUES[run_id] = q
     settings = Settings()
@@ -112,6 +115,9 @@ async def run(run_id: str) -> JSONResponse:
             q.put({"event": "error", "message": str(exc)})
         finally:
             q.put(_DONE)
+            # 标记已结束：从 PROGRESS_QUEUES 移除，使 run_status 不再报 running
+            # （正在连着的 SSE 已持有 q 引用，仍能读到 _DONE 收尾，不受影响）
+            PROGRESS_QUEUES.pop(run_id, None)
 
     threading.Thread(target=_worker, daemon=True).start()
     return JSONResponse({"status": "started"})
@@ -135,6 +141,16 @@ async def progress(run_id: str) -> StreamingResponse:
             yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
+@app.get("/api/run_status/{run_id}")
+async def run_status(run_id: str) -> JSONResponse:
+    """返回 run 运行态——供前端刷新后判定是否重连：done（已完成）/ running（在跑）/ unknown（未知或失效）"""
+    if (RUNS_DIR / run_id / "finalize.json").exists() or run_id in TREE_STORE:
+        return JSONResponse({"status": "done"})
+    if run_id in PROGRESS_QUEUES:
+        return JSONResponse({"status": "running"})
+    return JSONResponse({"status": "unknown"})
 
 
 @app.get("/api/tree/{run_id}")

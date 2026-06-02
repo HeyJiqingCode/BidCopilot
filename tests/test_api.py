@@ -47,6 +47,52 @@ def test_upload_and_run(monkeypatch, tmp_path):
     assert tree.json()["nodes"][0]["title"] == "投标函"
 
 
+def test_run_rejects_duplicate(monkeypatch, tmp_path):
+    """同一 run_id 已完成后再次 POST 应返回 409，避免重头跑"""
+    monkeypatch.setattr(api_main, "RUNS_DIR", tmp_path)
+
+    def fake_run(input_path, llm, model_main, model_mini, run_dir, log_callback, project_name=None, cu=None):
+        log_callback({"phase": "parse", "status": "done", "message": "解析完成"})
+        return _fake_tree()
+
+    monkeypatch.setattr(api_main, "run_pipeline", fake_run)
+
+    client = TestClient(api_main.app)
+    files = [("files", ("a.docx", io.BytesIO(b"x"), "application/octet-stream"))]
+    run_id = client.post("/api/upload", files=files).json()["run_id"]
+
+    assert client.post(f"/api/run/{run_id}").status_code == 200
+    # 消费 SSE 确保 worker 跑完（finalize.json 落盘 + PROGRESS_QUEUES 清理）
+    with client.stream("GET", f"/api/progress/{run_id}") as resp:
+        "".join(resp.iter_text())
+    # 已完成：再次发起应被拒
+    dup = client.post(f"/api/run/{run_id}")
+    assert dup.status_code == 409
+
+
+def test_run_status_transitions(monkeypatch, tmp_path):
+    """run_status：未知 run → unknown；跑完落盘 finalize → done"""
+    monkeypatch.setattr(api_main, "RUNS_DIR", tmp_path)
+
+    def fake_run(input_path, llm, model_main, model_mini, run_dir, log_callback, project_name=None, cu=None):
+        log_callback({"phase": "finalize", "status": "done", "message": "完成"})
+        return _fake_tree()
+
+    monkeypatch.setattr(api_main, "run_pipeline", fake_run)
+
+    client = TestClient(api_main.app)
+    # 未知 run
+    assert client.get("/api/run_status/nope123").json()["status"] == "unknown"
+
+    files = [("files", ("a.docx", io.BytesIO(b"x"), "application/octet-stream"))]
+    run_id = client.post("/api/upload", files=files).json()["run_id"]
+    client.post(f"/api/run/{run_id}")
+    with client.stream("GET", f"/api/progress/{run_id}") as resp:
+        "".join(resp.iter_text())
+    # 跑完：done
+    assert client.get(f"/api/run_status/{run_id}").json()["status"] == "done"
+
+
 def test_progress_sse_streams_phase_events(monkeypatch, tmp_path):
     """SSE 进度端点流式推送阶段日志事件"""
     monkeypatch.setattr(api_main, "RUNS_DIR", tmp_path)
