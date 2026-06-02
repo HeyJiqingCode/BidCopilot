@@ -119,10 +119,15 @@ function app() {
     async openHistory(runId) {
       this.viewing = runId; this.running = false; this.errorMsg = "";
       this.initPhases();
-      const events = await (await fetch(`/api/runs/${runId}/logs`)).json();
-      events.forEach(ev => this.applyPhaseEvent(ev));
-      this.phases.forEach(p => { if (p.logs.length) p.status = "done"; });
-      this.tree = await (await fetch(`/api/tree/${runId}`)).json();
+      try {
+        const events = await (await fetch(`/api/runs/${runId}/logs`)).json();
+        events.forEach(ev => this.applyPhaseEvent(ev));
+        // 回看启发式：有日志的阶段视为已完成（meta.json 仅成功时落盘，出错的 run 一般不入列表）
+        this.phases.forEach(p => { if (p.logs.length) p.status = "done"; });
+        this.tree = await (await fetch(`/api/tree/${runId}`)).json();
+      } catch (e) {
+        this.errorMsg = "加载历史记录失败";
+      }
     },
 
     get cov() { return this.tree ? this.tree.coverage : {}; },
