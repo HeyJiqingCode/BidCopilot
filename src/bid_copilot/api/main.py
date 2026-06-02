@@ -33,20 +33,24 @@ if _WEB_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(_WEB_DIR)), name="static")
 
 
+# 注：下列做同步文件 I/O 的路由全部声明为普通 def（非 async）。
+# FastAPI/Starlette 会把 def 路由放到线程池执行，避免 read_text()/目录遍历/docx 生成
+# 这类阻塞操作堵住事件循环——否则一个请求读文件期间，SSE 进度流和其它任务的数据请求全被冻住，
+# 表现为「切任务 UI 刷新很慢没反应」。只有真正异步的 progress（SSE 流）与仅起线程的 run 保留 async。
 @app.get("/", response_class=HTMLResponse)
-async def index() -> HTMLResponse:
+def index() -> HTMLResponse:
     """返回前端页面"""
     return HTMLResponse((_WEB_DIR / "index.html").read_text(encoding="utf-8"))
 
 
 @app.get("/login", response_class=HTMLResponse)
-async def login_page() -> HTMLResponse:
+def login_page() -> HTMLResponse:
     """返回登录页（仅在开启本地认证时有意义；公开路径，不经认证守卫）"""
     return HTMLResponse((_WEB_DIR / "login.html").read_text(encoding="utf-8"))
 
 
 @app.post("/api/upload")
-async def upload(files: list[UploadFile] = File(...)) -> JSONResponse:
+def upload(files: list[UploadFile] = File(...)) -> JSONResponse:
     """接收一个或多个文件，全部存入 input 目录，返回 run_id 与文件名列表"""
     run_id = uuid.uuid4().hex[:12]
     dest_dir = RUNS_DIR / run_id / "input"
@@ -161,7 +165,7 @@ async def progress(run_id: str) -> StreamingResponse:
 
 
 @app.get("/api/run_status/{run_id}")
-async def run_status(run_id: str) -> JSONResponse:
+def run_status(run_id: str) -> JSONResponse:
     """返回 run 运行态——供前端刷新后判定是否重连：done（已完成）/ running（在跑）/ unknown（未知或失效）"""
     if (RUNS_DIR / run_id / "finalize.json").exists() or run_id in TREE_STORE:
         return JSONResponse({"status": "done"})
@@ -171,7 +175,7 @@ async def run_status(run_id: str) -> JSONResponse:
 
 
 @app.get("/api/tree/{run_id}")
-async def get_tree(run_id: str) -> JSONResponse:
+def get_tree(run_id: str) -> JSONResponse:
     """返回最终大纲树 JSON（内存优先，刷新后从 finalize.json 兜底）——找不到则 404"""
     if run_id in TREE_STORE:
         return JSONResponse(TREE_STORE[run_id].model_dump())
@@ -182,7 +186,7 @@ async def get_tree(run_id: str) -> JSONResponse:
 
 
 @app.get("/api/export/{run_id}.docx")
-async def export(run_id: str, keep_ai_marks: bool = False) -> FileResponse:
+def export(run_id: str, keep_ai_marks: bool = False) -> FileResponse:
     """导出 Word 文档（内存优先，刷新/重启后从 finalize.json 兜底重建大纲树）——找不到则 404"""
     if run_id in TREE_STORE:
         tree = TREE_STORE[run_id]
@@ -200,7 +204,7 @@ async def export(run_id: str, keep_ai_marks: bool = False) -> FileResponse:
 
 
 @app.get("/api/runs/{run_id}/steps/{step}")
-async def get_step(run_id: str, step: str) -> FileResponse:
+def get_step(run_id: str, step: str) -> FileResponse:
     """返回某步中间产物 JSON——讲原理用"""
     path = RUNS_DIR / run_id / f"{step}.json"
     if not path.exists():
@@ -209,7 +213,7 @@ async def get_step(run_id: str, step: str) -> FileResponse:
 
 
 @app.get("/api/runs")
-async def list_runs() -> JSONResponse:
+def list_runs() -> JSONResponse:
     """列出所有 run（已完成的读 meta.json 带 status=done；正在跑的从 PROGRESS_QUEUES 补 status=running）——按时间倒序"""
     items: list[dict] = []
     done_ids: set[str] = set()
@@ -238,7 +242,7 @@ async def list_runs() -> JSONResponse:
 
 
 @app.get("/api/runs/{run_id}/logs")
-async def get_logs(run_id: str) -> JSONResponse:
+def get_logs(run_id: str) -> JSONResponse:
     """返回该 run 的日志事件数组（读 logs.jsonl）——找不到则 404"""
     log_path = RUNS_DIR / run_id / "logs.jsonl"
     if not log_path.exists():
