@@ -4,6 +4,6 @@ __pycache__/
 .env
 runs/
 .DS_Store
-docs/TenderingDocs/
+docs/
 *.egg-info/
 .pytest_cache/
