@@ -29,6 +29,7 @@ function app() {
     authEnabled: false, // 是否开启本地登录门（决定是否显示退出登录）
     sourceModal: null,  // 来源详情弹窗数据 {nodeId, title, groups:[{type,label,items:[{location,quote}]}]}
     _es: null,          // 当前 SSE 连接（切任务/新建前必须关，避免多个连接写同一 phases 致日志串台）
+    _histTimer: null,   // 侧栏历史轮询定时器：状态独立轮询 /api/runs，不依赖 SSE 的 done（后台任务切走后也能自愈成「已完成」）
 
     initPhases() {
       this.phases = PHASE_DEFS.map(p => ({ key: p.key, label: p.label, status: "pending", logs: [] }));
@@ -84,6 +85,27 @@ function app() {
         const r = await fetch("/api/runs");
         this.history = await r.json();
       } catch (e) { this.history = []; }
+      this._ensureHistoryPoll();   // 有在跑的任务则保证轮询在转，让侧栏状态独立自愈（不靠 SSE done）
+    },
+
+    // 若存在运行中的 run 就启动轮询、否则停掉——内部辅助
+    // 解决：后台任务你切走后，没有 SSE 接它的 done，侧栏会一直卡「运行中」。改由本轮询周期性
+    // 拉 /api/runs（服务端权威 status），任务后台跑完即自动移入「已完成」，无需刷新页面。
+    _ensureHistoryPoll() {
+      const hasRunning = this.history.some(h => h.status === "running");
+      if (hasRunning && !this._histTimer) {
+        this._histTimer = setInterval(async () => {
+          try {
+            const r = await fetch("/api/runs");
+            this.history = await r.json();
+          } catch (e) { /* 网络抖动忽略，下个周期再试 */ }
+          if (!this.history.some(h => h.status === "running")) {
+            clearInterval(this._histTimer); this._histTimer = null;   // 没有在跑的了，停轮询省资源
+          }
+        }, 4000);
+      } else if (!hasRunning && this._histTimer) {
+        clearInterval(this._histTimer); this._histTimer = null;
+      }
     },
 
     // 运行中的 run（左侧栏「运行中」分组）
@@ -208,10 +230,17 @@ function app() {
     // 点击左侧栏的 run：运行中→重连看实时进度；已完成→回看日志+树
     async openHistory(runId) {
       this._closeES();        // 切任务先关旧连接：done 分支不会重连，必须显式关，否则旧任务继续写 phases 致串台
-      const item = this.history.find(h => h.run_id === runId);
-      const isRunning = item && item.status === "running";
       this.viewing = runId; this.errorMsg = "";
       this.initPhases();
+      // 以服务端权威状态判定是否在跑——不信本地 history（轮询前可能过期：任务已在后台跑完但侧栏还没刷到）
+      let isRunning = false;
+      try {
+        const st = await (await fetch(`/api/run_status/${runId}`)).json();
+        isRunning = st.status === "running";
+      } catch (e) {
+        const item = this.history.find(h => h.run_id === runId);   // 查询失败退回本地快照兜底
+        isRunning = !!(item && item.status === "running");
+      }
       // 先补已落盘的历史日志，恢复已跑阶段状态
       try {
         const events = await (await fetch(`/api/runs/${runId}/logs`)).json();
