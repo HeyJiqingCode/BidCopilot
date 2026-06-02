@@ -11,7 +11,7 @@ class SkeletonResult(BaseModel):
     nodes: list[OutlineNode] = Field(default_factory=list)
 
 
-def extract_skeleton(section_text: str, document: str, llm, model: str) -> list[OutlineNode]:
+def extract_skeleton(section_text: str, document: str, llm, model: str, effort: str = "medium") -> list[OutlineNode]:
     """从投标文件格式章节抽取显式骨架
 
     参数:
@@ -19,6 +19,7 @@ def extract_skeleton(section_text: str, document: str, llm, model: str) -> list[
         document: 来源文件名
         llm: LLMClient
         model: 模型名（main）
+        effort: 推理强度（low/medium/high），默认 medium
     返回:
         OutlineNode 顶层列表（来源已标 SKELETON）
     """
@@ -26,6 +27,6 @@ def extract_skeleton(section_text: str, document: str, llm, model: str) -> list[
     content = f"来源文件名：{document}\n章节全文：\n{section_text}"
     result = llm.complete(
         model=model, instructions=instructions, input_content=content,
-        effort="medium", verbosity="low", schema=SkeletonResult,
+        effort=effort, verbosity="low", schema=SkeletonResult,
     )
     return result.nodes

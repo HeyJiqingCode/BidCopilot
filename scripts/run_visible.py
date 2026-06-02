@@ -26,6 +26,14 @@ def main():
         run_dir=Path("runs") / target.stem,
         progress_callback=lambda s, p: print(f"[step] {s}"),
         cu=cu,
+        efforts={
+            "classify": settings.effort_classify,
+            "locate": settings.effort_locate,
+            "skeleton": settings.effort_skeleton,
+            "requirements": settings.effort_requirements,
+            "merge": settings.effort_merge,
+            "supplement": settings.effort_supplement,
+        },
     )
     print("\n===== 大纲树 =====")
     _print_tree(tree.nodes)

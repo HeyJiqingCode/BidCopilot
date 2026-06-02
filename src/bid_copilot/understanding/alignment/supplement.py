@@ -12,7 +12,7 @@ class SupplementResult(BaseModel):
     tree: list[OutlineNode] = Field(default_factory=list)
 
 
-def supplement_tree(tree: list[OutlineNode], floating: list[str], llm, model: str) -> list[OutlineNode]:
+def supplement_tree(tree: list[OutlineNode], floating: list[str], llm, model: str, effort: str = "high") -> list[OutlineNode]:
     """生成式补全大纲树
 
     参数:
@@ -20,6 +20,7 @@ def supplement_tree(tree: list[OutlineNode], floating: list[str], llm, model: st
         floating: 游离要求的描述列表
         llm: LLMClient
         model: 模型名（main）
+        effort: 推理强度（low/medium/high），默认 high
     返回:
         补全后的大纲树
     """
@@ -31,6 +32,6 @@ def supplement_tree(tree: list[OutlineNode], floating: list[str], llm, model: st
     content = json.dumps(payload, ensure_ascii=False)
     result = llm.complete(
         model=model, instructions=instructions, input_content=content,
-        effort="high", verbosity="low", schema=SupplementResult,
+        effort=effort, verbosity="low", schema=SupplementResult,
     )
     return result.tree

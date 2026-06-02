@@ -11,13 +11,14 @@ class RequirementsResult(BaseModel):
     items: list[RequirementItem] = Field(default_factory=list)
 
 
-def extract_requirements(section_texts: list[str], llm, model: str) -> list[RequirementItem]:
+def extract_requirements(section_texts: list[str], llm, model: str, effort: str = "medium") -> list[RequirementItem]:
     """从评分/技术/商务章节抽取要求条目
 
     参数:
         section_texts: 关键章节文本列表（评分/技术/商务）
         llm: LLMClient
         model: 模型名（main）
+        effort: 推理强度（low/medium/high），默认 medium
     返回:
         合并后的 RequirementItem 列表
     """
@@ -28,7 +29,7 @@ def extract_requirements(section_texts: list[str], llm, model: str) -> list[Requ
             continue
         result = llm.complete(
             model=model, instructions=instructions, input_content=text,
-            effort="medium", verbosity="low", schema=RequirementsResult,
+            effort=effort, verbosity="low", schema=RequirementsResult,
         )
         all_items.extend(result.items)
     return all_items

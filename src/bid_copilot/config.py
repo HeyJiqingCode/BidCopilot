@@ -31,3 +31,10 @@ class Settings:
     local_auth_session_hours: int = field(default_factory=lambda: int(os.getenv("LOCAL_AUTH_SESSION_HOURS", "24")))
     # 会话 cookie 名
     local_auth_cookie_name: str = field(default_factory=lambda: os.getenv("LOCAL_AUTH_COOKIE_NAME", "bid_copilot_session"))
+    # 各管线步骤的推理强度 effort（low/medium/high）；默认维持各步现状，可经 env 覆盖
+    effort_classify: str = field(default_factory=lambda: os.getenv("EFFORT_CLASSIFY", "low"))
+    effort_locate: str = field(default_factory=lambda: os.getenv("EFFORT_LOCATE", "medium"))
+    effort_skeleton: str = field(default_factory=lambda: os.getenv("EFFORT_SKELETON", "medium"))
+    effort_requirements: str = field(default_factory=lambda: os.getenv("EFFORT_REQUIREMENTS", "medium"))
+    effort_merge: str = field(default_factory=lambda: os.getenv("EFFORT_MERGE", "high"))
+    effort_supplement: str = field(default_factory=lambda: os.getenv("EFFORT_SUPPLEMENT", "high"))

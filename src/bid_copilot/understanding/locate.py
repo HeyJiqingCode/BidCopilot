@@ -16,13 +16,14 @@ class LocateResult(BaseModel):
     business_sections: list[int] = Field(default_factory=list)
 
 
-def locate_sections(sections: list[Section], llm, model: str) -> LocateResult:
+def locate_sections(sections: list[Section], llm, model: str, effort: str = "medium") -> LocateResult:
     """定位四类关键章节
 
     参数:
         sections: 全部章节
         llm: LLMClient
         model: 模型名（main）
+        effort: 推理强度（low/medium/high），默认 medium
     返回:
         LocateResult（各类章节索引）
     """
@@ -34,5 +35,5 @@ def locate_sections(sections: list[Section], llm, model: str) -> LocateResult:
     content = "章节列表：\n" + "\n".join(listing_lines)
     return llm.complete(
         model=model, instructions=instructions, input_content=content,
-        effort="medium", verbosity="low", schema=LocateResult,
+        effort=effort, verbosity="low", schema=LocateResult,
     )

@@ -100,6 +100,14 @@ async def run(run_id: str) -> JSONResponse:
                 model_main=settings.model_main, model_mini=settings.model_mini,
                 run_dir=run_dir, log_callback=_log_cb, project_name=proj,
                 cu=cu,
+                efforts={
+                    "classify": settings.effort_classify,
+                    "locate": settings.effort_locate,
+                    "skeleton": settings.effort_skeleton,
+                    "requirements": settings.effort_requirements,
+                    "merge": settings.effort_merge,
+                    "supplement": settings.effort_supplement,
+                },
             )
             TREE_STORE[run_id] = tree
             meta = {

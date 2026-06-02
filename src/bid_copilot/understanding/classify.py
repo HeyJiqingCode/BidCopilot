@@ -25,13 +25,14 @@ class ClassifyResult(BaseModel):
     confidence: float
 
 
-def classify_documents(docs: list[ParsedDocument], llm, model: str) -> dict[str, ClassifyResult]:
+def classify_documents(docs: list[ParsedDocument], llm, model: str, effort: str = "low") -> dict[str, ClassifyResult]:
     """对每个文档分类
 
     参数:
         docs: 已解析文档列表
         llm: LLMClient（或兼容的 complete 接口）
         model: 模型名（mini）
+        effort: 推理强度（low/medium/high），默认 low
     返回:
         {文件名: ClassifyResult}
     """
@@ -42,7 +43,7 @@ def classify_documents(docs: list[ParsedDocument], llm, model: str) -> dict[str,
         content = f"文件名：{doc.filename}\n正文开头：\n{preview}"
         result = llm.complete(
             model=model, instructions=instructions, input_content=content,
-            effort="low", verbosity="low", schema=ClassifyResult,
+            effort=effort, verbosity="low", schema=ClassifyResult,
         )
         out[doc.filename] = result
     return out

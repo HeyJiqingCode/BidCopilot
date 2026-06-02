@@ -32,7 +32,7 @@ class MergeResult(BaseModel):
 
 
 def merge_requirements(skeleton: list[OutlineNode], requirements: list[RequirementItem],
-                       llm, model: str) -> tuple[list[OutlineNode], list[MergeDecision]]:
+                       llm, model: str, effort: str = "high") -> tuple[list[OutlineNode], list[MergeDecision]]:
     """把要求条目语义归并进骨架树
 
     参数:
@@ -40,6 +40,7 @@ def merge_requirements(skeleton: list[OutlineNode], requirements: list[Requireme
         requirements: 要求条目列表
         llm: LLMClient
         model: 模型名（main）
+        effort: 推理强度（low/medium/high），默认 high
     返回:
         (归并后的树, 归属判定列表)
     """
@@ -51,7 +52,7 @@ def merge_requirements(skeleton: list[OutlineNode], requirements: list[Requireme
     content = json.dumps(payload, ensure_ascii=False)
     result = llm.complete(
         model=model, instructions=instructions, input_content=content,
-        effort="high", verbosity="low", schema=MergeResult,
+        effort=effort, verbosity="low", schema=MergeResult,
     )
     return result.tree, result.decisions
 
