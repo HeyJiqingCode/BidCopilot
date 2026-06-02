@@ -52,6 +52,18 @@ function app() {
       return m[type] || "bg-neutral-100 text-neutral-500";
     },
 
+    // 来源类型 → 引用线边框色类（弹窗里引用风格的左竖线，呼应徽章配色）
+    borderClass(type) {
+      const m = {
+        skeleton: "border-blue-200",
+        scoring: "border-green-200",
+        tech_spec: "border-purple-200",
+        biz_terms: "border-orange-200",
+        ai_suggested: "border-neutral-200",
+      };
+      return m[type] || "border-neutral-200";
+    },
+
     // 从文件名提取大写扩展名（无扩展名返回 FILE）——供格式徽章显示
     fileExt(name) {
       const i = (name || "").lastIndexOf(".");
@@ -205,7 +217,7 @@ function app() {
             if (seen.has(key)) return false;
             seen.add(key); return true;
           });
-          return { type: t, label: this.badge(t), cls: this.badgeClass(t), items };
+          return { type: t, label: this.badge(t), cls: this.badgeClass(t), borderCls: this.borderClass(t), items };
         });
       this.sourceModal = { nodeId, title: `${node.id} ${node.title}`, groups };
     },
