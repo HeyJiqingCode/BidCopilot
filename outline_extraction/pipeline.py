@@ -78,7 +78,7 @@ def run_pipeline(
     for p, suf in files:
         fname = Path(p).name
         if suf != ".docx" and cu is not None:
-            _log("parse", "progress", f"调用 Content Understanding 解析《{fname}》", level="detail")
+            _log("parse", "progress", f"尝试用 Content Understanding 解析《{fname}》", level="detail")
         else:
             _log("parse", "progress", f"本地解析《{fname}》", level="detail")
         docs.append(extract_document(Path(p), suf, cu=cu))
