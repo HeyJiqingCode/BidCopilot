@@ -28,6 +28,7 @@ function app() {
     expanded: {},       // {phaseKey: bool} 手动展开状态
     authEnabled: false, // 是否开启本地登录门（决定是否显示退出登录）
     sourceModal: null,  // 来源详情弹窗数据 {nodeId, title, groups:[{type,label,items:[{location,quote}]}]}
+    _es: null,          // 当前 SSE 连接（切任务/新建前必须关，避免多个连接写同一 phases 致日志串台）
 
     initPhases() {
       this.phases = PHASE_DEFS.map(p => ({ key: p.key, label: p.label, status: "pending", logs: [] }));
@@ -116,6 +117,7 @@ function app() {
     },
 
     newRun() {
+      this._closeES();        // 关掉可能在跑的旧连接，避免新建后旧任务事件还往 phases 里写
       this.viewing = null; this.runId = null; this.fileNames = []; this._files = [];
       this.tree = null; this.errorMsg = ""; this.phases = []; this.running = false;
     },
@@ -135,19 +137,28 @@ function app() {
       this._listenProgress(this.runId);
     },
 
+    // 关闭当前 SSE 连接（若有）——切任务/新建/收尾前调用，确保同一时刻只有一个连接写 phases
+    _closeES() {
+      if (this._es) { this._es.close(); this._es = null; }
+    },
+
     // 接收某 run 的 SSE 进度事件
     _listenProgress(runId) {
+      this._closeES();        // 先关掉上一个连接，杜绝两个任务的事件混进同一 phases（日志串台根因）
       let finished = false;   // 标记是否已正常收尾（done/error），避免 onerror 误复位 running
       const es = new EventSource(`/api/progress/${runId}`);
+      this._es = es;          // 存引用，供切任务时关闭
       es.onmessage = async (e) => {
         const ev = JSON.parse(e.data);
         if (ev.event === "done") {
           finished = true; es.close();
+          if (this._es === es) this._es = null;     // 仅当仍是当前连接时清引用，避免误清掉新连接
           this.tree = await (await fetch(`/api/tree/${runId}`)).json();
           this.running = false;
           this.loadHistory();
         } else if (ev.event === "error") {
           finished = true; es.close();
+          if (this._es === es) this._es = null;
           this.errorMsg = ev.message || "运行出错"; this.running = false;
         } else {
           this.applyPhaseEvent(ev);
@@ -156,6 +167,7 @@ function app() {
       // onerror 只在「尚未正常收尾」时才复位；正常 done 后的 close 不应让上传区重现（这是重复发起的根因）
       es.onerror = () => {
         es.close();
+        if (this._es === es) this._es = null;
         if (!finished) this.running = false;
       };
     },
@@ -195,6 +207,7 @@ function app() {
 
     // 点击左侧栏的 run：运行中→重连看实时进度；已完成→回看日志+树
     async openHistory(runId) {
+      this._closeES();        // 切任务先关旧连接：done 分支不会重连，必须显式关，否则旧任务继续写 phases 致串台
       const item = this.history.find(h => h.run_id === runId);
       const isRunning = item && item.status === "running";
       this.viewing = runId; this.errorMsg = "";
