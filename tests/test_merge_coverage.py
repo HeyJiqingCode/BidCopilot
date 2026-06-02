@@ -80,6 +80,24 @@ def test_merge_two_stage_backfills_refids_and_floating_excluded():
     assert "R1" not in mapped                        # floating → 不进树
 
 
+def test_merge_preserves_normalized_concise_title_and_quote():
+    """阶段A 规范化产出的简洁标题（原文整句留在 quote）必须原样进入最终树——工程不得覆盖 LLM 的标题选择"""
+    # 原始骨架：标题是整句要求描述（模拟原文把一句话当条目名）
+    skeleton = [OutlineNode(id="1", title="按招标文件要求或者投标人认为有必要提供的其他商务文件", level=1, sources=[
+        SourceRef(type=SourceType.SKELETON, document="fmt", location="（6）按招标文件要求…其他商务文件",
+                  quote="（6）按招标文件要求或者投标人认为有必要提供的其他商务文件")], children=[])]
+    # 阶段A 归纳出简洁标题"其他商务文件"，原文整句保留在 quote
+    normalize = _NormalizeResult(tree=[OutlineNode(id="1", title="其他商务文件", level=1, sources=[
+        SourceRef(type=SourceType.SKELETON, document="fmt", location="（6）按招标文件要求…其他商务文件",
+                  quote="（6）按招标文件要求或者投标人认为有必要提供的其他商务文件")], children=[])])
+    fake = _FakeLLM(normalize=normalize)             # 无要求挂载，attach 各批返回空
+    tree, _ = merge_requirements(skeleton, [], llm=fake, model="gpt-5.4")
+
+    assert tree[0].title == "其他商务文件"             # 简洁标题被保留，未被工程改回整句
+    quotes = [s.quote for s in tree[0].sources]
+    assert any(q and "其他商务文件" in q and len(q) > 12 for q in quotes)  # 原文整句仍在 quote，可溯源
+
+
 def test_merge_two_stage_child_of_creates_node_and_dedupes():
     """两阶段：child_of 新建子节点；跨批同义新子节点被阶段C 去重合并"""
     skeleton = [OutlineNode(id="1", title="技术投标文件", level=1, sources=[
