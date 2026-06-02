@@ -180,7 +180,9 @@
             <a :href="exportUrl()" class="px-4 py-1.5 rounded-full bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition-colors whitespace-nowrap">导出 Word</a>
           </div>
         </div>
-        <div class="text-sm leading-relaxed">
+        <!-- 事件委托：x-html 内的徽章带 data-node-id，点击冒泡到此处打开来源弹窗 -->
+        <div class="text-sm leading-relaxed"
+             @click="const b = $event.target.closest('.source-badge'); if (b) openSource(b.dataset.nodeId)">
           <template x-for="n in (tree ? tree.nodes : [])" :key="n.id">
             <div x-html="renderNode(n, 0)"></div>
           </template>
@@ -188,6 +190,50 @@
       </section>
       </div>
     </main>
+
+    <!-- 来源详情弹窗：点击徽章打开，点遮罩/关闭按钮/Esc 关闭 -->
+    <div x-show="sourceModal" x-transition.opacity
+         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/30 backdrop-blur-sm"
+         @click="closeSource()" @keydown.escape.window="closeSource()" style="display:none">
+      <div x-show="sourceModal" x-transition
+           class="w-full max-w-lg max-h-[80vh] overflow-y-auto bg-white rounded-2xl shadow-xl border border-neutral-100"
+           @click.stop>
+        <template x-if="sourceModal">
+          <div>
+            <!-- 头部：节点标题 + 关闭 -->
+            <div class="flex items-start justify-between gap-4 px-6 pt-6 pb-4 border-b border-neutral-100">
+              <div class="min-w-0">
+                <div class="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-1">来源说明</div>
+                <h3 class="text-base font-semibold text-neutral-900 break-words" x-text="sourceModal.title"></h3>
+              </div>
+              <button @click="closeSource()" type="button"
+                      class="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 transition-colors">✕</button>
+            </div>
+            <!-- 主体：按来源类型分组 -->
+            <div class="px-6 py-5 space-y-5">
+              <template x-for="g in sourceModal.groups" :key="g.type">
+                <div>
+                  <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium mb-2" :class="g.cls" x-text="g.label"></span>
+                  <div class="space-y-2.5">
+                    <template x-for="(it, ii) in g.items" :key="ii">
+                      <div class="rounded-xl bg-neutral-50 border border-neutral-100 px-4 py-3">
+                        <div class="flex items-center gap-1.5 text-xs text-neutral-400 mb-1.5" x-show="it.document">
+                          <svg class="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                          <span class="truncate" x-text="'出处：' + it.document" :title="it.document"></span>
+                        </div>
+                        <div class="text-xs text-neutral-400 mb-1" x-show="it.location" x-text="it.location"></div>
+                        <div class="text-sm text-neutral-700 leading-relaxed break-words" x-show="it.quote && it.quote !== it.location" x-text="it.quote"></div>
+                        <div class="text-sm text-neutral-400 italic" x-show="!it.quote && !it.location && !it.document">（无补充说明）</div>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
   </div>
   <script src="/static/app.js"></script>
 </body>

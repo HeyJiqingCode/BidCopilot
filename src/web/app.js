@@ -27,6 +27,7 @@ function app() {
     viewing: null,      // 正在回看的 run_id（null=新建/实时模式）
     expanded: {},       // {phaseKey: bool} 手动展开状态
     authEnabled: false, // 是否开启本地登录门（决定是否显示退出登录）
+    sourceModal: null,  // 来源详情弹窗数据 {nodeId, title, groups:[{type,label,items:[{location,quote}]}]}
 
     initPhases() {
       this.phases = PHASE_DEFS.map(p => ({ key: p.key, label: p.label, status: "pending", logs: [] }));
@@ -176,36 +177,45 @@ function app() {
     get cov() { return this.tree ? this.tree.coverage : {}; },
     exportUrl() { return `/api/export/${this.viewing || this.runId}.docx?keep_ai_marks=${this.keepAiMarks}`; },
 
-    // 收集某节点指定来源类型的「来源原因」文本（location + quote），供徽章悬浮提示
-    sourceTooltip(node, type) {
-      const lines = (node.sources || [])
-        .filter(s => s.type === type)
-        .map(s => {
-          const loc = (s.location || "").trim();
-          const quote = (s.quote || "").trim();
-          // location 与 quote 相同则只留一条，避免重复
-          if (quote && quote !== loc) return loc ? `${loc}\n${quote}` : quote;
-          return loc || quote;
-        })
-        .filter(Boolean);
-      // 整条去重（一个节点可能有多个同义来源）
-      return [...new Set(lines)].join("\n\n");
+    // 按 id 在大纲树里查找节点——供点击徽章时取该节点的来源
+    findNode(nodeId, nodes) {
+      for (const n of (nodes || (this.tree ? this.tree.nodes : []))) {
+        if (n.id === nodeId) return n;
+        const r = this.findNode(nodeId, n.children || []);
+        if (r) return r;
+      }
+      return null;
     },
 
-    // 转义字符串用于 HTML 属性值（防止引号/尖括号破坏 title 属性）
-    escAttr(s) {
-      return (s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;")
-        .replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    // 点击徽章：打开来源详情弹窗，按来源类型分组展示 location+quote
+    openSource(nodeId) {
+      const node = this.findNode(nodeId);
+      if (!node || !node.sources || !node.sources.length) return;
+      const order = ["skeleton", "scoring", "tech_spec", "biz_terms", "ai_suggested"];
+      const groups = order
+        .filter(t => node.sources.some(s => s.type === t))
+        .map(t => {
+          const seen = new Set();
+          const items = node.sources.filter(s => s.type === t).map(s => ({
+            document: (s.document || "").trim(),
+            location: (s.location || "").trim(),
+            quote: (s.quote || "").trim(),
+          })).filter(it => {
+            const key = it.document + "|" + it.location + "|" + it.quote;
+            if (seen.has(key)) return false;
+            seen.add(key); return true;
+          });
+          return { type: t, label: this.badge(t), cls: this.badgeClass(t), items };
+        });
+      this.sourceModal = { nodeId, title: `${node.id} ${node.title}`, groups };
     },
+    closeSource() { this.sourceModal = null; },
 
     renderNode(node, depth) {
       const pad = depth * 18;
       const types = [...new Set((node.sources || []).map(s => s.type))];
       const badges = types
-        .map(t => {
-          const tip = this.escAttr(this.sourceTooltip(node, t));
-          return `<span title="${tip}" class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] whitespace-nowrap cursor-help ${this.badgeClass(t)}">${this.badge(t)}</span>`;
-        })
+        .map(t => `<span data-node-id="${node.id}" class="source-badge ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] whitespace-nowrap cursor-pointer hover:ring-1 hover:ring-current/30 transition ${this.badgeClass(t)}">${this.badge(t)}</span>`)
         .join("");
       // flex 布局：标题区占满左侧并缩进，来源徽章统一推到最右对齐
       // AI 建议节点已由徽章标识，不再额外加整行底色（避免突兀）
