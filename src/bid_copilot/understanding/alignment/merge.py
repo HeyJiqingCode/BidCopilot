@@ -3,7 +3,7 @@
 为什么两阶段：原先一次性把整棵骨架 + 全部要求塞进单次 LLM 调用、要求输出完整归并树，
 超大标的（数百条要求）会让输出 JSON 极长 → 极慢/超时/被截断。改为：
 A 规范化骨架（去重、定型 id）→ B 按来源类型分批、只输出小决策表（可并行）→ 工程回填 → C 子节点去重。
-对外签名与返回 (tree, decisions) 不变，pipeline / compute_coverage 无需改动。
+merge_requirements 返回 (tree, decisions)；覆盖率由 compute_coverage 从最终树的 ref_ids 推导（不依赖 decisions）。
 """
 import json
 from concurrent.futures import ThreadPoolExecutor
@@ -42,12 +42,6 @@ class MergeDecision(BaseModel):
     ref_id: str                           # 对应要求的 ref_id（稳定唯一关联键）
     disposition: Disposition
     node_id: Optional[str] = None         # 归属节点 id（floating 时为空）
-
-
-class MergeResult(BaseModel):
-    """归并结果——保留以兼容旧用法/测试（tree + decisions）"""
-    tree: list[OutlineNode] = Field(default_factory=list)
-    decisions: list[MergeDecision] = Field(default_factory=list)
 
 
 class _NormalizeResult(BaseModel):

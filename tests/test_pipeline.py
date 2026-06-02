@@ -9,7 +9,7 @@ from bid_copilot.understanding.locate import LocateResult
 from bid_copilot.understanding.extract_skeleton import SkeletonResult
 from bid_copilot.understanding.extract_requirements import RequirementsResult
 from bid_copilot.understanding.alignment.merge import (
-    MergeResult, MergeDecision, Disposition, _NormalizeResult, _AttachResult, _DedupeResult,
+    MergeDecision, Disposition, _NormalizeResult, _AttachResult, _DedupeResult,
 )
 from bid_copilot.understanding.alignment.supplement import SupplementResult
 from bid_copilot.understanding.pipeline import run_pipeline

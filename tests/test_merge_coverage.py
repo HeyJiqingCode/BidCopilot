@@ -3,7 +3,7 @@ from bid_copilot.models import (
     OutlineNode, SourceRef, SourceType, RequirementItem,
 )
 from bid_copilot.understanding.alignment.merge import (
-    merge_requirements, MergeResult, Disposition, MergeDecision, compute_coverage,
+    merge_requirements, Disposition, MergeDecision, compute_coverage,
     _NormalizeResult, _AttachResult, _NewChild, _DedupeResult, _collect_ref_ids,
 )
 

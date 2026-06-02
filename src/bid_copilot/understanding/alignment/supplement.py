@@ -9,7 +9,6 @@ LLM 只输出每条游离要求的安置判定（挂到已有节点 / 新建子�
 import json
 from enum import Enum
 from pathlib import Path
-from typing import Optional
 from pydantic import BaseModel, Field
 from bid_copilot.models import OutlineNode, RequirementItem
 from bid_copilot.understanding.alignment.merge import _index_nodes, _append_ref
