@@ -176,11 +176,36 @@ function app() {
     get cov() { return this.tree ? this.tree.coverage : {}; },
     exportUrl() { return `/api/export/${this.viewing || this.runId}.docx?keep_ai_marks=${this.keepAiMarks}`; },
 
+    // 收集某节点指定来源类型的「来源原因」文本（location + quote），供徽章悬浮提示
+    sourceTooltip(node, type) {
+      const lines = (node.sources || [])
+        .filter(s => s.type === type)
+        .map(s => {
+          const loc = (s.location || "").trim();
+          const quote = (s.quote || "").trim();
+          // location 与 quote 相同则只留一条，避免重复
+          if (quote && quote !== loc) return loc ? `${loc}\n${quote}` : quote;
+          return loc || quote;
+        })
+        .filter(Boolean);
+      // 整条去重（一个节点可能有多个同义来源）
+      return [...new Set(lines)].join("\n\n");
+    },
+
+    // 转义字符串用于 HTML 属性值（防止引号/尖括号破坏 title 属性）
+    escAttr(s) {
+      return (s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    },
+
     renderNode(node, depth) {
       const pad = depth * 18;
       const types = [...new Set((node.sources || []).map(s => s.type))];
       const badges = types
-        .map(t => `<span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] whitespace-nowrap ${this.badgeClass(t)}">${this.badge(t)}</span>`)
+        .map(t => {
+          const tip = this.escAttr(this.sourceTooltip(node, t));
+          return `<span title="${tip}" class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] whitespace-nowrap cursor-help ${this.badgeClass(t)}">${this.badge(t)}</span>`;
+        })
         .join("");
       // flex 布局：标题区占满左侧并缩进，来源徽章统一推到最右对齐
       // AI 建议节点已由徽章标识，不再额外加整行底色（避免突兀）
