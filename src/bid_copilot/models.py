@@ -75,3 +75,4 @@ class RequirementItem(BaseModel):
     source_type: SourceType                # 来源类型
     location: str                          # 原文定位
     suggested_title: str                   # 建议对应的投标章节标题
+    is_param_table: bool = False           # True=该条是整张技术参数表的聚合（投标方在技术参数响应表统一应答），非逐行要求
