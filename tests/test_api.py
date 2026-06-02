@@ -101,3 +101,39 @@ def test_upload_multiple_files_stores_dir(monkeypatch, tmp_path):
     names = sorted(p.name for p in stored.iterdir())
     assert names == ["biz.docx", "tech.docx"]
     assert up.json()["filenames"] == ["tech.docx", "biz.docx"]
+
+
+def test_runs_list_and_logs_and_tree_fallback(monkeypatch, tmp_path):
+    """落盘 logs.jsonl+meta.json 后：/api/runs 列出、/logs 读取、tree 从 finalize 兜底"""
+    monkeypatch.setattr(api_main, "RUNS_DIR", tmp_path)
+
+    def fake_run(input_path, llm, model_main, model_mini, run_dir, log_callback, project_name=None, cu=None):
+        log_callback({"phase": "parse", "status": "progress", "message": "本地解析《a.docx》", "level": "detail"})
+        log_callback({"phase": "finalize", "status": "done", "message": "完成：大纲共 5 个标题", "level": "main"})
+        import json as _j
+        run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "finalize.json").write_text(_j.dumps(_fake_tree().model_dump(), ensure_ascii=False), encoding="utf-8")
+        return _fake_tree()
+
+    monkeypatch.setattr(api_main, "run_pipeline", fake_run)
+
+    client = TestClient(api_main.app)
+    files = [("files", ("a.docx", io.BytesIO(b"x"), "application/octet-stream"))]
+    run_id = client.post("/api/upload", files=files).json()["run_id"]
+    client.post(f"/api/run/{run_id}")
+    with client.stream("GET", f"/api/progress/{run_id}") as resp:
+        "".join(resp.iter_text())
+
+    logs = client.get(f"/api/runs/{run_id}/logs")
+    assert logs.status_code == 200
+    assert any("本地解析" in e["message"] for e in logs.json())
+
+    runs = client.get("/api/runs")
+    assert runs.status_code == 200
+    ids = [r["run_id"] for r in runs.json()]
+    assert run_id in ids
+
+    api_main.TREE_STORE.pop(run_id, None)
+    tree = client.get(f"/api/tree/{run_id}")
+    assert tree.status_code == 200
+    assert tree.json()["nodes"][0]["title"] == "投标函"
