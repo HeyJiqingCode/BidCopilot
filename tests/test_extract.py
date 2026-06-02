@@ -98,10 +98,18 @@ def test_extract_doc_uses_cu_when_available(tmp_path):
     assert "标题" in result.raw_markdown
 
 
-def test_extract_doc_falls_back_when_cu_fails(tmp_path):
-    """.doc 走 CU 但 CU 抛错 → 降级回本地（method=textutil 或 skipped，不崩）"""
+def test_extract_doc_skipped_when_cu_fails(tmp_path):
+    """.doc 走 CU 但 CU 抛错 → 记为 skipped（无本地 .doc 兜底转换器），不崩"""
     p = tmp_path / "c.doc"; p.write_bytes(b"\xd0\xcf fake")
     class _BoomCU:
         def analyze(self, fp): raise RuntimeError("CU down")
     result = extract_document(Path(p), ".doc", cu=_BoomCU())
-    assert result.extract_method in ("textutil", "skipped")
+    assert result.extract_method == "skipped"
+    assert result.raw_markdown == ""
+
+
+def test_extract_doc_skipped_when_no_cu(tmp_path):
+    """.doc 且未配置 CU → 记为 skipped（部署环境只支持 CU 解析 .doc）"""
+    p = tmp_path / "c.doc"; p.write_bytes(b"\xd0\xcf fake")
+    result = extract_document(Path(p), ".doc", cu=None)
+    assert result.extract_method == "skipped"

@@ -1,5 +1,4 @@
 """文本抽取——探测优先决策链，统一输出 Markdown"""
-import subprocess
 from pathlib import Path
 from typing import Any
 import docx
@@ -15,12 +14,13 @@ def extract_document(file_path: Path, suffix: str, cu: Any = None) -> ParsedDocu
     """按后缀分流抽取文本
 
     分流规则：.docx 走本地抽取（保留 Word 原生标题层级）；其余后缀优先用 CU 出结构化
-    markdown，CU 不可用或失败时降级回本地（textutil/pdfplumber/xml）。
+    markdown，CU 不可用或失败时 .pdf/.xml 降级回本地。.doc 仅支持 CU（部署环境无本地
+    .doc 转换器），CU 不可用时记为 skipped。
 
     参数:
         file_path: 文件路径
         suffix: 小写后缀
-        cu: CU 客户端（None 表示未配置，走本地兜底）
+        cu: CU 客户端（None 表示未配置）
     返回:
         ParsedDocument（含统一 Markdown 与抽取方式标记）
     """
@@ -36,11 +36,8 @@ def extract_document(file_path: Path, suffix: str, cu: Any = None) -> ParsedDocu
                                       extract_method="cu", page_count=cu_result.page_count)
         except Exception:
             pass
-    if suffix == ".doc":
-        return ParsedDocument(filename=name, raw_markdown=_doc_to_md(file_path),
-                              extract_method="textutil", page_count=None)
     if suffix == ".pdf":
-        return _pdf_to_doc(file_path, name)
+        return _pdf_to_doc(file_path, name, cu=cu)
     if suffix == ".xml":
         return ParsedDocument(filename=name, raw_markdown=file_path.read_text(errors="ignore"),
                               extract_method="xml", page_count=None)
@@ -103,15 +100,6 @@ def _table_to_md(table) -> list[str]:
         if r_idx == 0:
             md_rows.append("| " + " | ".join(["---"] * len(cells)) + " |")
     return md_rows
-
-
-def _doc_to_md(file_path: Path) -> str:
-    """.doc → 文本：调用 macOS textutil 子进程——内部辅助"""
-    result = subprocess.run(
-        ["textutil", "-convert", "txt", "-stdout", str(file_path)],
-        capture_output=True, text=True,
-    )
-    return result.stdout
 
 
 def _pdf_to_doc(file_path: Path, name: str, cu: Any = None) -> ParsedDocument:

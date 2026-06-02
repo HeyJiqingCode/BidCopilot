@@ -56,7 +56,7 @@ class ParsedDocument(BaseModel):
     """解析层输出——单个文件的统一表示"""
     filename: str                          # 文件名
     raw_markdown: str                      # 统一 Markdown 全文
-    extract_method: str                    # docx/textutil/pdf_text/cu_ocr
+    extract_method: str                    # docx / cu / pdf_text / xml / skipped
     page_count: Optional[int] = None       # 页数（PDF）
 
 

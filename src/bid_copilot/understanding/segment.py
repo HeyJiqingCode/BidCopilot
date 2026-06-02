@@ -19,7 +19,7 @@ def segment_text(markdown: str, doc_source: str) -> list[Section]:
 
     优先信任 docx 原生 Markdown 标题：若全文存在以 # 开头的标题行，则只用 # 作为标题
     来源（# 数量即层级），其余行一律视为正文——避免正则把正文/表格行误判为标题。
-    若全文无 # 标题（如 textutil 抽取的纯文本 .doc），退回正则编号识别。
+    若全文无 # 标题（如纯文本无标题样式的来源），退回正则编号识别。
 
     参数:
         markdown: 文档的 Markdown 文本
