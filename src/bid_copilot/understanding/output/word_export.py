@@ -31,9 +31,10 @@ def _write_node(doc, node: OutlineNode, keep_ai_marks: bool) -> None:
         keep_ai_marks: 是否标注 AI 建议
     返回: 无
     """
-    title = node.title
+    # 标题前带路径式序号（如 "1.2 法定代表人身份证明"），与网页大纲一致
+    title = f"{node.id} {node.title}"
     if keep_ai_marks and node.sources and all(s.type == SourceType.AI_SUGGESTED for s in node.sources):
-        title = f"{title}（🤖AI建议）"
+        title = f"{title}（AI建议）"
     doc.add_heading(title, level=min(node.level, 9))
     for child in node.children:
         _write_node(doc, child, keep_ai_marks)
