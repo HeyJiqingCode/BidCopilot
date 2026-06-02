@@ -87,9 +87,9 @@
               </div>
               <!-- 滚动日志窗 -->
               <div x-show="isExpanded(p) && p.logs.length"
-                   class="ml-10 mt-1 mb-2 max-h-44 overflow-y-auto rounded-lg bg-neutral-900 text-neutral-100 text-xs font-mono p-3 space-y-1">
+                   class="ml-10 mt-1 mb-2 max-h-44 overflow-y-auto rounded-lg bg-neutral-50 border border-neutral-200 text-xs font-mono p-3 space-y-1">
                 <template x-for="(line, li) in p.logs" :key="li">
-                  <div :class="line.level === 'main' ? 'text-emerald-300' : 'text-neutral-400'">
+                  <div :class="line.level === 'main' ? 'text-emerald-700' : 'text-neutral-500'">
                     <span x-text="line.level === 'main' ? '▸ ' : '· '"></span><span x-text="line.text"></span>
                   </div>
                 </template>
