@@ -171,7 +171,7 @@ async def list_runs() -> JSONResponse:
                 try:
                     items.append(json.loads(meta_path.read_text(encoding="utf-8")))
                 except Exception:
-                    continue
+                    continue  # 跳过损坏的 meta.json，不让单个坏文件拖垮整个历史列表
     items.sort(key=lambda m: m.get("created_at", 0), reverse=True)
     return JSONResponse(items)
 
@@ -185,6 +185,10 @@ async def get_logs(run_id: str) -> JSONResponse:
     events: list[dict] = []
     for line in log_path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
-        if line:
+        if not line:
+            continue
+        try:
             events.append(json.loads(line))
+        except Exception:
+            continue  # 跳过损坏/半截写入的日志行，不让单条坏行拖垮整个读取
     return JSONResponse(events)
