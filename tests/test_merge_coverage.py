@@ -80,6 +80,40 @@ def test_merge_two_stage_backfills_refids_and_floating_excluded():
     assert "R1" not in mapped                        # floating → 不进树
 
 
+def test_merge_propagates_is_param_table_into_tree_source():
+    """参数表聚合要求(is_param_table=true)挂进树时，标记须传导到节点 SourceRef，供前端标识"""
+    skeleton = [OutlineNode(id="1", title="技术参数", level=1, sources=[
+        SourceRef(type=SourceType.SKELETON, document="fmt", location="技术", quote=None)], children=[])]
+    # 含一条评分 + 一条参数表聚合技术要求（评分批占位，使 _FakeLLM 的按序路由对齐到 tech 批）
+    reqs = [
+        RequirementItem(ref_id="R0", description="评分项", source_type=SourceType.SCORING,
+                        location="评1", suggested_title="X"),
+        RequirementItem(ref_id="R1", description="对《组件规格表》全部参数统一应答（共约8项）",
+                        source_type=SourceType.TECH_SPEC, location="表2", suggested_title="技术参数响应表",
+                        is_param_table=True),
+    ]
+    normalize = _NormalizeResult(tree=[OutlineNode(id="1", title="技术参数", level=1, sources=[
+        SourceRef(type=SourceType.SKELETON, document="fmt", location="技术", quote=None)], children=[])])
+    attach = {
+        SourceType.SCORING: _AttachResult(decisions=[
+            MergeDecision(ref_id="R0", disposition=Disposition.MERGED_INTO, node_id="1")]),
+        SourceType.TECH_SPEC: _AttachResult(decisions=[
+            MergeDecision(ref_id="R1", disposition=Disposition.MERGED_INTO, node_id="1")]),
+    }
+    fake = _FakeLLM(normalize=normalize, attach_by_type=attach)
+    tree, _ = merge_requirements(skeleton, reqs, llm=fake, model="gpt-5.4")
+
+    # R1（参数表聚合）回填后，节点应有一条 is_param_table=True 的 source
+    def _has_param_flag(nodes):
+        for n in nodes:
+            if any(s.is_param_table for s in n.sources):
+                return True
+            if _has_param_flag(n.children):
+                return True
+        return False
+    assert _has_param_flag(tree)
+
+
 def test_merge_preserves_normalized_concise_title_and_quote():
     """阶段A 规范化产出的简洁标题（原文整句留在 quote）必须原样进入最终树——工程不得覆盖 LLM 的标题选择"""
     # 原始骨架：标题是整句要求描述（模拟原文把一句话当条目名）

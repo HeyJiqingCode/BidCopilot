@@ -268,10 +268,13 @@ def _append_ref(node: Optional[OutlineNode], req: Optional[RequirementItem]) -> 
         if src.type == req.source_type and src.location == req.location:
             if req.ref_id not in src.ref_ids:
                 src.ref_ids.append(req.ref_id)
+            if req.is_param_table:
+                src.is_param_table = True        # 该来源含参数表聚合则置位，供前端标识
             return
     node.sources.append(SourceRef(
         type=req.source_type, document=_TYPE_DOC.get(req.source_type, ""),
         location=req.location, quote=req.description, ref_ids=[req.ref_id],
+        is_param_table=req.is_param_table,
     ))
 
 

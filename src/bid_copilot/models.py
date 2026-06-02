@@ -21,6 +21,7 @@ class SourceRef(BaseModel):
     location: str                          # 章节定位，如"七、技术建议书"
     quote: Optional[str] = None            # 原文摘录（可选）
     ref_ids: list[str] = Field(default_factory=list)  # 该来源覆盖的要求 ref_id（用于从树推导覆盖率）
+    is_param_table: bool = False           # True=该来源是整张技术参数表的聚合（前端标识"技术参数响应表"）
 
 
 class OutlineNode(BaseModel):

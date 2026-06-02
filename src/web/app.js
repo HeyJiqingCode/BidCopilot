@@ -294,6 +294,11 @@ function app() {
       const badges = types
         .map(t => `<span data-node-id="${node.id}" class="source-badge ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] whitespace-nowrap cursor-pointer hover:ring-1 hover:ring-current/30 transition ${this.badgeClass(t)}">${this.badge(t)}</span>`)
         .join("");
+      // 含技术参数表聚合的节点：加一个独立标签，提示此处应填技术参数响应表统一应答（非逐条要求）
+      const isParamTable = (node.sources || []).some(s => s.is_param_table);
+      const paramBadge = isParamTable
+        ? `<span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] whitespace-nowrap bg-teal-50 text-teal-700" title="此处技术参数在一张技术参数响应表中统一应答，不逐条单列">技术参数响应表</span>`
+        : "";
       // flex 布局：标题区占满左侧并缩进，来源徽章统一推到最右对齐
       // AI 建议节点已由徽章标识，不再额外加整行底色（避免突兀）
       let html = `<div class="flex items-center py-1.5 border-b border-neutral-50">
@@ -301,7 +306,7 @@ function app() {
           <span class="text-neutral-900 font-medium mr-2 text-xs tabular-nums">${node.id}</span>
           <span class="text-neutral-800">${node.title}</span>
         </div>
-        <div class="shrink-0 ml-3">${badges}</div>
+        <div class="shrink-0 ml-3">${paramBadge}${badges}</div>
       </div>`;
       for (const c of (node.children || [])) html += this.renderNode(c, depth + 1);
       return html;
