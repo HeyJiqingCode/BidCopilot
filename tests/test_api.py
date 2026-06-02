@@ -98,7 +98,7 @@ def test_progress_sse_streams_phase_events(monkeypatch, tmp_path):
     monkeypatch.setattr(api_main, "RUNS_DIR", tmp_path)
 
     def fake_run(input_path, llm, model_main, model_mini, run_dir, log_callback, project_name=None, cu=None, efforts=None, max_concurrency=5, models=None, model_nano=""):
-        log_callback({"phase": "classify", "status": "done", "message": "分类完成：技术规范×2"})
+        log_callback({"phase": "classify", "status": "done", "message": "分类完成：2*技术规范"})
         log_callback({"phase": "finalize", "status": "done", "message": "完成：大纲共 10 个标题"})
         return _fake_tree()
 
@@ -111,7 +111,7 @@ def test_progress_sse_streams_phase_events(monkeypatch, tmp_path):
 
     with client.stream("GET", f"/api/progress/{run_id}") as resp:
         body = "".join(resp.iter_text())
-    assert "分类完成：技术规范×2" in body
+    assert "分类完成：2*技术规范" in body
     assert "完成：大纲共 10 个标题" in body
     assert "classify" in body and "finalize" in body
 

@@ -200,6 +200,29 @@ def _make_fmt_docx(tmp_path):
     return src
 
 
+def test_pipeline_skips_supplement_when_no_floating(tmp_path):
+    """无游离要求时跳过生成式补充——不发起 SupplementResult 的 LLM 调用"""
+    src = _make_fmt_docx(tmp_path)
+    schemas_seen = []
+
+    class _SchemaRecordingLLM(_ScriptedLLM):
+        """记录每次调用的 schema，用于断言 supplement 是否被调用"""
+        def complete(self, **kwargs):
+            schemas_seen.append(kwargs.get("schema"))
+            return super().complete(**kwargs)
+
+    llm = _SchemaRecordingLLM()
+    # 不 push 任何要求 → merge 无要求可挂 → 0 条游离 → supplement 应被跳过
+    llm.push(ClassifyResult(file_class=FileClass.BID_FORMAT, confidence=0.9))
+    llm.push(LocateResult(bid_format_sections=[0], scoring_sections=[], tech_spec_sections=[], business_sections=[]))
+    llm.push(SkeletonResult(nodes=[OutlineNode(id="1", title="投标函", level=1, sources=[], children=[])]))
+
+    tree = run_pipeline(src, llm=llm, model_main="MAIN", model_mini="MINI", run_dir=tmp_path / "run")
+
+    assert SupplementResult not in schemas_seen   # 0 游离 → 未调用生成式补充
+    assert tree.nodes[0].title == "投标函"          # 树仍正常产出（沿用归并树）
+
+
 def test_pipeline_model_tier_routing(tmp_path):
     """models 档位映射：classify 走 mini、merge 显式配 mini 时也走 mini、显式 nano 走 NANO，其余 main"""
     src = _make_fmt_docx(tmp_path)

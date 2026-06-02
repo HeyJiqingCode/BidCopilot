@@ -113,7 +113,7 @@ def run_pipeline(
             _log("parse", "progress", f"本地解析《{fname}》", level="detail")
         docs.append(extract_document(Path(p), suf, cu=cu))
     _emit("parse", [d.model_dump() for d in docs])
-    method_stat = ", ".join(f"{m}×{c}" for m, c in Counter(d.extract_method for d in docs).items())
+    method_stat = ", ".join(f"{c}*{m}" for m, c in Counter(d.extract_method for d in docs).items())
     _log("parse", "done", f"解析完成：{len(docs)} 个文件（{method_stat}）")
 
     # 2. 分类
@@ -122,7 +122,7 @@ def run_pipeline(
         _log("classify", "progress", f"调用 {model_mini} 分类《{doc.filename}》（{i}/{len(docs)}）", level="detail")
     classes = classify_documents(docs, llm=llm, model=_pick("classify", "mini"), effort=efforts.get("classify", "low"))
     _emit("classify", {k: v.model_dump() for k, v in classes.items()})
-    class_stat = ", ".join(f"{cls}×{cnt}" for cls, cnt in
+    class_stat = ", ".join(f"{cnt}*{cls}" for cls, cnt in
                            Counter(v.file_class.value for v in classes.values()).items())
     _log("classify", "done", f"分类完成：{class_stat}")
 
@@ -173,7 +173,7 @@ def run_pipeline(
     for idx, req in enumerate(requirements):
         req.ref_id = f"R{idx}"
     _emit("extract_requirements", [r.model_dump() for r in requirements])
-    req_stat = ", ".join(f"{_SOURCE_LABELS.get(st, st.value)}×{cnt}" for st, cnt in
+    req_stat = ", ".join(f"{cnt}*{_SOURCE_LABELS.get(st, st.value)}" for st, cnt in
                          Counter(r.source_type for r in requirements).items())
     _log("extract_requirements", "done",
          f"要求抽取完成：共 {len(requirements)} 条" + (f"（{req_stat}）" if req_stat else ""))
@@ -186,12 +186,18 @@ def run_pipeline(
     _log("merge", "done", f"归并完成：{len(merged_tree)} 个顶层标题")
 
     # 8. 生成式兜底（游离要求）
+    #    无游离要求时直接跳过：supplement 只负责安置游离要求，0 条时这次 LLM 调用没事可做，
+    #    既白等一轮、又有让模型扰动已正确归并树的风险，故短路返回原树。
     _log("supplement", "start")
     floating = [r.description for r, d in _pair_floating(requirements, decisions)]
-    _log("supplement", "progress", f"调用 {model_main} 生成式补充（{len(floating)} 条游离要求）", level="detail")
-    final_nodes = supplement_tree(merged_tree, floating=floating, llm=llm, model=_pick("supplement", "main"), effort=efforts.get("supplement", "high"))
+    if floating:
+        _log("supplement", "progress", f"调用 {model_main} 生成式补充（{len(floating)} 条游离要求）", level="detail")
+        final_nodes = supplement_tree(merged_tree, floating=floating, llm=llm, model=_pick("supplement", "main"), effort=efforts.get("supplement", "high"))
+        _log("supplement", "done", f"生成式补充完成：游离要求 {len(floating)} 条待安置")
+    else:
+        final_nodes = merged_tree                       # 无游离要求，跳过 LLM 调用
+        _log("supplement", "done", "无游离要求，跳过生成式补充")
     _emit("supplement", [n.model_dump() for n in final_nodes])
-    _log("supplement", "done", f"生成式补充完成：游离要求 {len(floating)} 条待安置")
 
     # 9. id 重整
     _log("finalize", "start")
