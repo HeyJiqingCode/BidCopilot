@@ -1,4 +1,4 @@
-// 招标大纲提取前端逻辑（Alpine 组件）
+// 智能投标助手前端逻辑（Alpine 组件）
 
 // 9 阶段固定顺序与中文标签
 const PHASE_DEFS = [
@@ -16,7 +16,8 @@ const PHASE_DEFS = [
 function app() {
   return {
     runId: null,
-    fileNames: [],
+    fileNames: [],      // [{name, size}] 已选文件展示信息
+    _files: [],         // 对应的原始 File 对象（删除某个后需重新上传）
     running: false,
     phases: [],
     errorMsg: "",
@@ -25,6 +26,7 @@ function app() {
     history: [],        // 历史 run 列表
     viewing: null,      // 正在回看的 run_id（null=新建/实时模式）
     expanded: {},       // {phaseKey: bool} 手动展开状态
+    authEnabled: false, // 是否开启本地登录门（决定是否显示退出登录）
 
     initPhases() {
       this.phases = PHASE_DEFS.map(p => ({ key: p.key, label: p.label, status: "pending", logs: [] }));
@@ -32,8 +34,8 @@ function app() {
     },
 
     badge(type) {
-      const m = { skeleton: "📋骨架", scoring: "📊评分", tech_spec: "📐技术",
-                  biz_terms: "📄商务", ai_suggested: "🤖AI建议" };
+      const m = { skeleton: "骨架", scoring: "评分", tech_spec: "技术",
+                  biz_terms: "商务", ai_suggested: "AI建议" };
       return m[type] || type;
     },
 
@@ -49,6 +51,20 @@ function app() {
       return m[type] || "bg-neutral-100 text-neutral-500";
     },
 
+    // 从文件名提取大写扩展名（无扩展名返回 FILE）——供格式徽章显示
+    fileExt(name) {
+      const i = (name || "").lastIndexOf(".");
+      return i >= 0 ? name.slice(i + 1).toUpperCase() : "FILE";
+    },
+
+    // 把字节数格式化为人类可读大小（B/KB/MB）——供文件卡片显示
+    humanSize(bytes) {
+      if (bytes === null || bytes === undefined) return "";
+      if (bytes < 1024) return bytes + " B";
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + " KB";
+      return (bytes / 1024 / 1024).toFixed(1) + " MB";
+    },
+
     async loadHistory() {
       try {
         const r = await fetch("/api/runs");
@@ -57,17 +73,32 @@ function app() {
     },
 
     async onFile(e) {
-      const files = Array.from(e.target.files || []);
-      if (!files.length) return;
-      this.fileNames = files.map(f => f.name);
+      const picked = Array.from(e.target.files || []);
+      if (!picked.length) return;
+      // 留住 File 对象本身（删除某个后需重新构造上传），同时记录名字与大小
+      this._files = picked;
+      this.fileNames = picked.map(f => ({ name: f.name, size: f.size }));
+      await this.uploadFiles();
+    },
+
+    // 把当前 this._files 上传到后端，刷新 runId——内部辅助
+    async uploadFiles() {
+      if (!this._files || !this._files.length) { this.runId = null; return; }
       const fd = new FormData();
-      files.forEach(f => fd.append("files", f));
+      this._files.forEach(f => fd.append("files", f));
       const r = await fetch("/api/upload", { method: "POST", body: fd });
       this.runId = (await r.json()).run_id;
     },
 
+    // 移除已选列表中的第 idx 个文件，并以剩余文件重新上传
+    async removeFile(idx) {
+      this._files = (this._files || []).filter((_, i) => i !== idx);
+      this.fileNames = this.fileNames.filter((_, i) => i !== idx);
+      await this.uploadFiles();
+    },
+
     newRun() {
-      this.viewing = null; this.runId = null; this.fileNames = [];
+      this.viewing = null; this.runId = null; this.fileNames = []; this._files = [];
       this.tree = null; this.errorMsg = ""; this.phases = []; this.running = false;
     },
 
@@ -137,17 +168,41 @@ function app() {
       const pad = depth * 18;
       const types = [...new Set((node.sources || []).map(s => s.type))];
       const badges = types
-        .map(t => `<span class="ml-2 px-1.5 py-0.5 rounded text-[11px] ${this.badgeClass(t)}">${this.badge(t)}</span>`)
+        .map(t => `<span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] whitespace-nowrap ${this.badgeClass(t)}">${this.badge(t)}</span>`)
         .join("");
-      const isAi = types.length === 1 && types[0] === "ai_suggested";
-      const bg = isAi ? "background:#fafafa;" : "";
-      let html = `<div style="padding-left:${pad}px;${bg}" class="py-1.5 border-b border-neutral-50">
-        <span class="text-neutral-300 mr-2 text-xs">${node.id}</span>
-        <span class="text-neutral-800">${node.title}</span>${badges}</div>`;
+      // flex 布局：标题区占满左侧并缩进，来源徽章统一推到最右对齐
+      // AI 建议节点已由徽章标识，不再额外加整行底色（避免突兀）
+      let html = `<div class="flex items-center py-1.5 border-b border-neutral-50">
+        <div class="flex-1 min-w-0" style="padding-left:${pad}px;">
+          <span class="text-neutral-900 font-medium mr-2 text-xs tabular-nums">${node.id}</span>
+          <span class="text-neutral-800">${node.title}</span>
+        </div>
+        <div class="shrink-0 ml-3">${badges}</div>
+      </div>`;
       for (const c of (node.children || [])) html += this.renderNode(c, depth + 1);
       return html;
     },
 
-    init() { this.loadHistory(); },
+    // 查询是否开启本地认证（决定退出登录按钮显隐）
+    async checkAuth() {
+      try {
+        const r = await fetch("/auth/session");
+        const data = await r.json();
+        this.authEnabled = !!data.auth_enabled;
+      } catch (e) { this.authEnabled = false; }
+    },
+
+    // 退出登录：清后端会话后跳登录页（请求失败也跳，保证能离开）
+    async logout() {
+      try {
+        await fetch("/auth/logout", { method: "POST" });
+      } catch (e) {
+        // 忽略失败，始终跳转登录页
+      } finally {
+        window.location.href = "/login";
+      }
+    },
+
+    init() { this.checkAuth(); this.loadHistory(); },
   };
 }
