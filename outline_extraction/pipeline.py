@@ -43,7 +43,7 @@ def run_pipeline(
         model_mini: 小模型名（分类）
         run_dir: 中间产物输出目录
         progress_callback: 每步回调 (step_name, payload)，用于 dump 等
-        log_callback: 阶段级结构化日志回调，接收 {"phase","status","message"}，供前端实时展示
+        log_callback: 阶段级结构化日志回调，接收 {"phase","status","message","level"}，供前端实时展示
         project_name: 显式项目名；缺省用 input_path.stem
         cu: CU 客户端，缺省 None（仅本地抽取）
     返回:
