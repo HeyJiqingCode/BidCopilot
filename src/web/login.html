@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>智能投标助手</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang SC", sans-serif; }
+  </style>
+</head>
+<body class="bg-neutral-50 text-neutral-800 antialiased">
+  <div class="min-h-screen grid place-items-center px-6">
+    <form id="loginForm" class="w-full max-w-sm bg-white rounded-2xl border border-neutral-200 shadow-sm p-8">
+      <h1 class="text-2xl font-semibold tracking-tight text-neutral-900 text-center">智能投标助手</h1>
+
+      <div class="mt-7 space-y-4">
+        <div>
+          <label for="username" class="block text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-1.5">用户名</label>
+          <input id="username" name="username" type="text" autocomplete="username" required
+                 class="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors" />
+        </div>
+        <div>
+          <label for="password" class="block text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-1.5">密码</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required
+                 class="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors" />
+        </div>
+      </div>
+
+      <div id="error" class="mt-4 hidden rounded-lg bg-red-50 text-red-600 text-sm px-3 py-2"></div>
+
+      <button id="submitBtn" type="submit"
+              class="mt-6 w-full rounded-full bg-indigo-600 text-white text-sm font-medium py-2.5 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-wait transition-colors">
+        登录
+      </button>
+    </form>
+  </div>
+
+  <script>
+    const form = document.getElementById("loginForm");
+    const submitBtn = document.getElementById("submitBtn");
+    const errorEl = document.getElementById("error");
+    const usernameEl = document.getElementById("username");
+    const passwordEl = document.getElementById("password");
+
+    // 显示或清除登录错误提示
+    function setError(text) {
+      if (!text) {
+        errorEl.textContent = "";
+        errorEl.classList.add("hidden");
+        return;
+      }
+      errorEl.textContent = text;
+      errorEl.classList.remove("hidden");
+    }
+
+    // 进页先查登录态：已登录则直接跳主界面
+    async function checkSession() {
+      try {
+        const resp = await fetch("/auth/session");
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data.authenticated) window.location.href = "/";
+      } catch (_) {
+        // 瞬时失败时保持停留在登录页
+      }
+    }
+
+    // 提交凭据，成功则种 cookie 并跳主界面
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      setError("");
+      submitBtn.disabled = true;
+      try {
+        const resp = await fetch("/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: usernameEl.value.trim(), password: passwordEl.value }),
+        });
+        if (!resp.ok) {
+          let msg = "登录失败。";
+          try { const data = await resp.json(); msg = data.detail || msg; } catch (_) {}
+          throw new Error(msg);
+        }
+        window.location.href = "/";
+      } catch (err) {
+        setError(err.message || "登录失败。");
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+
+    checkSession();
+  </script>
+</body>
+</html>
