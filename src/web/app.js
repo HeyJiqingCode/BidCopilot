@@ -146,6 +146,18 @@ function app() {
     },
     toggle(p) { this.expanded[p.key] = !this.expanded[p.key]; },
 
+    // 是否所有「有日志的阶段」都已展开（供总开关箭头方向判断）
+    get allExpanded() {
+      const withLogs = this.phases.filter(p => p.logs.length);
+      return withLogs.length > 0 && withLogs.every(p => this.isExpanded(p));
+    },
+
+    // 总开关：全部展开 / 全部收起（仅作用于有日志的阶段）
+    toggleAll() {
+      const target = !this.allExpanded;
+      this.phases.forEach(p => { if (p.logs.length) this.expanded[p.key] = target; });
+    },
+
     // 点击历史项：回看模式，加载日志+树
     async openHistory(runId) {
       this.viewing = runId; this.running = false; this.errorMsg = "";

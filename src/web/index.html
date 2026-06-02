@@ -80,7 +80,19 @@
 
       <!-- 处理流程 + 阶段日志窗 -->
       <section class="mb-8 rounded-2xl bg-white border border-neutral-100 p-6" x-show="phases.length">
-        <h2 class="text-sm font-semibold text-neutral-400 uppercase tracking-wide mb-5">处理流程</h2>
+        <div class="flex items-center justify-between mb-5">
+          <h2 class="text-sm font-semibold text-neutral-400 uppercase tracking-wide">处理流程</h2>
+          <!-- 总开关：全部展开 / 全部收起 -->
+          <button @click="toggleAll()" type="button"
+                  class="flex items-center gap-1 text-xs text-neutral-400 hover:text-indigo-600 transition-colors"
+                  :title="allExpanded ? '全部收起' : '全部展开'">
+            <span x-text="allExpanded ? '全部收起' : '全部展开'"></span>
+            <svg class="w-3.5 h-3.5 transition-transform" :class="allExpanded ? 'rotate-180' : ''"
+                 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+        </div>
         <ol class="space-y-1">
           <template x-for="(p, i) in phases" :key="p.key">
             <li>
@@ -100,7 +112,11 @@
                 <span class="text-sm flex-1"
                       :class="p.status === 'running' ? 'font-semibold text-indigo-700' : (p.status === 'done' ? 'text-neutral-700' : 'text-neutral-300')"
                       x-text="(i + 1) + '. ' + p.label"></span>
-                <span class="text-xs text-neutral-300" x-show="p.logs.length" x-text="isExpanded(p) ? '收起' : '展开'"></span>
+                <svg x-show="p.logs.length" class="w-4 h-4 text-neutral-300 transition-transform shrink-0"
+                     :class="isExpanded(p) ? 'rotate-180' : ''"
+                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
               </div>
               <!-- 阶段日志：引用线对齐序号列，无盒子，长行自动换行 -->
               <div x-show="isExpanded(p) && p.logs.length"
