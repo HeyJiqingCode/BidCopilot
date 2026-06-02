@@ -21,8 +21,9 @@ COPY src/ ./src/
 ENV PORT=8080
 EXPOSE 8080
 
-# 以非 root 运行（安全基线）
-RUN useradd -m appuser
+# 以非 root 运行（安全基线）；把 /app 所有权交给 appuser，
+# 使其能在工作目录下创建运行时产物目录 runs/（上传/跑任务时 mkdir），否则非 root 写会被拒
+RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
 
 # 启动 FastAPI 应用（单进程；Container Apps 靠多副本水平扩展，不在容器内开多 worker）
