@@ -4,14 +4,6 @@ Reads a tender document (招标文件) and automatically generates a structured 
 
 Built as a demo on Azure OpenAI. Upload a tender (single file or a package of files), watch a 9-step pipeline run live, review the outline with per-node source traceability and a coverage report, then export to Word.
 
-## Why
-
-Missing a single required item in a bid means disqualification (漏项 = 废标). Manually reading a multi-hundred-page tender to enumerate every scoring criterion, technical spec, and commercial term is slow and error-prone. Bid Copilot extracts those requirements, aligns them into the bid-document skeleton the tender prescribes, and reports coverage so reviewers can see what is and isn't accounted for.
-
-Two principles drive the design:
-- **Accuracy cannot regress** — coverage is computed from the actual outline tree (which requirement `ref_id`s really landed in a node), never from the LLM's self-report. A requirement the LLM claims to have placed but didn't is reported as uncovered.
-- **Universal, not overfit** — extraction/merge rules key on *structure and how a bidder responds*, never on a specific tender's wording.
-
 ## How it works
 
 A 9-step pipeline (`src/bid_copilot/understanding/pipeline.py`) turns raw files into the outline:
@@ -119,5 +111,3 @@ az containerapp up \
 ```
 
 Then set the environment variables (`FOUNDRY_API_KEY_AOAI`, `AOAI_BASE_URL`, `CU_*`, `MODEL_*`, …) on the container app; the image ships without an `.env`.
-
-**Note:** `runs/` is ephemeral container storage — run history is cleared when a replica restarts or scales to zero. Mount an Azure Files volume at `/app/runs` if history must persist.
