@@ -203,9 +203,6 @@
             <h2 class="text-lg font-semibold text-neutral-900 truncate" x-text="tree ? tree.project_name : ''" :title="tree ? tree.project_name : ''"></h2>
           </div>
           <div class="flex items-center gap-4 shrink-0">
-            <label class="text-xs text-neutral-500 flex items-center gap-1.5">
-              <input type="checkbox" x-model="keepAiMarks" class="rounded" /> 保留 AI 建议标注
-            </label>
             <a :href="exportUrl()" class="px-4 py-1.5 rounded-full bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition-colors whitespace-nowrap">导出 Word</a>
           </div>
         </div>

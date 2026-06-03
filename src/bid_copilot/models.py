@@ -11,7 +11,6 @@ class SourceType(str, Enum):
     SCORING = "scoring"          # 评分办法
     TECH_SPEC = "tech_spec"      # 技术规范书
     BIZ_TERMS = "biz_terms"      # 商务条款
-    AI_SUGGESTED = "ai_suggested"  # AI 生成式兜底
 
 
 class SourceRef(BaseModel):

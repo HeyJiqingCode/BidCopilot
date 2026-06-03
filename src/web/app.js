@@ -22,7 +22,6 @@ function app() {
     phases: [],
     errorMsg: "",
     tree: null,
-    keepAiMarks: false,
     history: [],        // 历史 run 列表
     viewing: null,      // 正在回看的 run_id（null=新建/实时模式）
     expanded: {},       // {phaseKey: bool} 手动展开状态
@@ -38,7 +37,7 @@ function app() {
 
     badge(type) {
       const m = { skeleton: "骨架", scoring: "评分", tech_spec: "技术",
-                  biz_terms: "商务", ai_suggested: "AI建议" };
+                  biz_terms: "商务" };
       return m[type] || type;
     },
 
@@ -49,7 +48,6 @@ function app() {
         scoring: "bg-green-50 text-green-600",
         tech_spec: "bg-purple-50 text-purple-600",
         biz_terms: "bg-orange-50 text-orange-600",
-        ai_suggested: "bg-neutral-100 text-neutral-500",
       };
       return m[type] || "bg-neutral-100 text-neutral-500";
     },
@@ -61,7 +59,6 @@ function app() {
         scoring: "border-green-200",
         tech_spec: "border-purple-200",
         biz_terms: "border-orange-200",
-        ai_suggested: "border-neutral-200",
       };
       return m[type] || "border-neutral-200";
     },
@@ -265,7 +262,7 @@ function app() {
     },
 
     get cov() { return this.tree ? this.tree.coverage : {}; },
-    exportUrl() { return `/api/export/${this.viewing || this.runId}.docx?keep_ai_marks=${this.keepAiMarks}`; },
+    exportUrl() { return `/api/export/${this.viewing || this.runId}.docx`; },
 
     // 按 id 在大纲树里查找节点——供点击徽章时取该节点的来源
     findNode(nodeId, nodes) {
@@ -281,7 +278,7 @@ function app() {
     openSource(nodeId) {
       const node = this.findNode(nodeId);
       if (!node || !node.sources || !node.sources.length) return;
-      const order = ["skeleton", "scoring", "tech_spec", "biz_terms", "ai_suggested"];
+      const order = ["skeleton", "scoring", "tech_spec", "biz_terms"];
       const groups = order
         .filter(t => node.sources.some(s => s.type === t))
         .map(t => {
@@ -314,7 +311,6 @@ function app() {
         ? `<span data-node-id="${node.id}" class="source-badge ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] whitespace-nowrap cursor-pointer hover:ring-1 hover:ring-current/30 transition bg-teal-50 text-teal-700" title="此处技术参数在一张技术参数响应表中统一应答，不逐条单列；点击查看聚合来源">技术参数响应表</span>`
         : "";
       // flex 布局：标题区占满左侧并缩进，来源徽章统一推到最右对齐
-      // AI 建议节点已由徽章标识，不再额外加整行底色（避免突兀）
       let html = `<div class="flex items-center py-1.5 border-b border-neutral-50">
         <div class="flex-1 min-w-0" style="padding-left:${pad}px;">
           <span class="text-neutral-900 font-medium mr-2 text-xs tabular-nums">${node.id}</span>

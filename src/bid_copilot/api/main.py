@@ -237,7 +237,7 @@ def get_tree(run_id: str) -> JSONResponse:
 
 
 @app.get("/api/export/{run_id}.docx")
-def export(run_id: str, keep_ai_marks: bool = False) -> FileResponse:
+def export(run_id: str) -> FileResponse:
     """导出 Word 文档（内存优先，刷新/重启后从 finalize.json 兜底重建大纲树）——找不到则 404"""
     if run_id in TREE_STORE:
         tree = TREE_STORE[run_id]
@@ -248,7 +248,7 @@ def export(run_id: str, keep_ai_marks: bool = False) -> FileResponse:
         tree = OutlineTree.model_validate(json.loads(fin.read_text(encoding="utf-8")))
     out_path = RUNS_DIR / run_id / "outline.docx"
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    export_to_docx(tree, out_path, keep_ai_marks=keep_ai_marks)
+    export_to_docx(tree, out_path)
     return FileResponse(str(out_path),
                         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         filename="投标文件大纲.docx")
