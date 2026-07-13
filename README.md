@@ -25,7 +25,7 @@ The web UI streams step progress over SSE, renders the outline with clickable so
 
 ### Docker
 
-1）Generate a strong random token (optional, used as LOCAL_AUTH_PASSWORD)
+1）Generate a strong random token (optional, used as `LOCAL_AUTH_PASSWORD`)
 
 ```bash
 openssl rand -hex 32
