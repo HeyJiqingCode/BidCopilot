@@ -1,6 +1,6 @@
 # 智能投标助手 —— 部署镜像（Azure Container Apps）
 # 纯 Python 服务：FastAPI + uvicorn。包在 src/ 下，靠 PYTHONPATH=src 导入（无 pip 安装）。
-# .doc 解析仅走 Azure Content Understanding（CU_ENDPOINT），镜像内不含本地转换器。
+# .doc 解析仅走 Azure Content Understanding（FOUNDRY_CU_BASE_URL），镜像内不含本地转换器。
 FROM python:3.14-slim
 
 # 不写 .pyc、日志不缓冲（容器日志实时可见）

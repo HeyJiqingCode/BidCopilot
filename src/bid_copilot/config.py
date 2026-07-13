@@ -10,9 +10,9 @@ load_dotenv()
 class Settings:
     """运行配置；字段默认从环境变量读取（每次实例化时求值，尊重运行时 env 变更）"""
     # Azure OpenAI 访问密钥
-    api_key: str = field(default_factory=lambda: os.getenv("FOUNDRY_API_KEY_AOAI", ""))
+    api_key: str = field(default_factory=lambda: os.getenv("FOUNDRY_AOAI_API_KEY", ""))
     # Azure OpenAI v1 preview 端点（以 /openai/v1/ 结尾）
-    base_url: str = field(default_factory=lambda: os.getenv("AOAI_BASE_URL", ""))
+    base_url: str = field(default_factory=lambda: os.getenv("FOUNDRY_AOAI_BASE_URL", ""))
     # 主模型部署名
     model_main: str = field(default_factory=lambda: os.getenv("MODEL_MAIN", "gpt-5.4"))
     # 轻量模型部署名
@@ -20,9 +20,9 @@ class Settings:
     # 最轻量模型部署名（nano 档，最快最省，适合极简任务/用户自测提速）
     model_nano: str = field(default_factory=lambda: os.getenv("MODEL_NANO", "gpt-5.4-nano"))
     # Content Understanding 端点（可选，缺省为空字符串）
-    cu_endpoint: str = field(default_factory=lambda: os.getenv("CU_ENDPOINT", ""))
+    cu_endpoint: str = field(default_factory=lambda: os.getenv("FOUNDRY_CU_BASE_URL", ""))
     # Content Understanding 密钥（可选，缺省为空字符串）
-    cu_key: str = field(default_factory=lambda: os.getenv("CU_KEY", ""))
+    cu_key: str = field(default_factory=lambda: os.getenv("FOUNDRY_CU_API_KEY", ""))
     # 是否启用本地登录门（Demo 部署用；false 则完全放行，默认行为不变）
     enable_local_auth: bool = field(default_factory=lambda: os.getenv("ENABLE_LOCAL_AUTH", "false").lower() == "true")
     # 本地登录用户名
