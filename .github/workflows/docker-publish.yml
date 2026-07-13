@@ -1,10 +1,14 @@
 name: Build and Publish Docker Image
 
 # main 每次推送出 latest + sha 标签;打 v* tag 出语义化版本标签
+# 纯文档改动(README/截图)不触发构建;paths-ignore 只作用于分支推送,tag 发版不受影响
 on:
   push:
     branches:
       - main
+    paths-ignore:
+      - "README.md"
+      - "assets/**"
     tags:
       - "v*"
 
