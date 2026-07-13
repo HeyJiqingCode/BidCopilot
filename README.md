@@ -57,6 +57,7 @@ docker run -itd -p 8080:8080 --name BidCopilot \
 git clone https://github.com/HeyJiqingCode/BidCopilot.git
 cd BidCopilot
 python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 
 # Copy .env.example and fill in your Azure OpenAI / Foundry settings
@@ -67,7 +68,7 @@ cp .env.example .env
 
 ```bash
 # run the web app
-ENABLE_LOCAL_AUTH=false PYTHONPATH=src .venv/bin/uvicorn bid_copilot.api.main:app --port 8080
+uvicorn bid_copilot.api.main:app --port 8080
 
 # open http://127.0.0.1:8080
 ```
