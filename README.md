@@ -40,6 +40,7 @@ docker run -itd -p 8080:8080 --name BidCopilot \
   -e FOUNDRY_CU_API_KEY=your-content-understanding-api-key \
   -e FOUNDRY_AOAI_BASE_URL=https://<foundry-resource>.openai.azure.com/openai/v1 \
   -e FOUNDRY_AOAI_API_KEY=your-foundry-api-key \
+  -e ENABLE_LOCAL_AUTH=true \
   -e LOCAL_AUTH_USERNAME=demo \
   -e LOCAL_AUTH_PASSWORD=your-strong-random-token \
   ghcr.io/heyjiqingcode/bidcopilot:1.0.0
