@@ -1,14 +1,9 @@
 name: Build and Publish Docker Image
 
-# main 每次推送出 latest + sha 标签;打 v* tag 出语义化版本标签
-# 纯文档改动(README/截图)不触发构建;paths-ignore 只作用于分支推送,tag 发版不受影响
+# 仅在打 v* tag 时构建发布:出语义化版本标签 + 自动附加 latest(指向最新版本)
+# 日常 push main 不构建镜像
 on:
   push:
-    branches:
-      - main
-    paths-ignore:
-      - "README.md"
-      - "assets/**"
     tags:
       - "v*"
 
@@ -46,14 +41,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            # main 分支每次推送 → latest
-            type=raw,value=latest,enable={{is_default_branch}}
-            # 每次构建都带短 SHA 标签,方便回滚定位
-            type=sha
-            # v1.0.0 -> 1.0.0, 1.0
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            # 原始 tag(如 v1.0.0)
             type=ref,event=tag
 
       - name: Build and push
