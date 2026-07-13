@@ -1,7 +1,5 @@
 name: Build and Publish Docker Image
 
-# 仅在打 v* tag 时构建发布:出语义化版本标签 + 自动附加 latest(指向最新版本)
-# 日常 push main 不构建镜像
 on:
   push:
     tags:
