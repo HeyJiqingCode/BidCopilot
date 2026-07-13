@@ -1,8 +1,9 @@
 # Bid Copilot
 
-Reads a tender document (招标文件) and automatically generates a structured **bid-document outline** (投标文件大纲) — the chapter tree a bidder must produce to respond, traced back to where each requirement came from in the tender.
+Reads a tender document (招标文件) and automatically generates a structured **bid-document outline** (投标文件大纲) — the chapter tree a bidder must produce to respond, traced back to where each requirement came from in the tender. Built as a demo on Azure OpenAI. Upload a tender (single file or a package of files), watch a 9-step pipeline run live, review the outline with per-node source traceability and a coverage report, then export to Word.
 
-Built as a demo on Azure OpenAI. Upload a tender (single file or a package of files), watch a 9-step pipeline run live, review the outline with per-node source traceability and a coverage report, then export to Word.
+![web-1](./assets/web-1.png)
+![web-1](./assets/web-2.png)
 
 ## How it works
 
@@ -20,94 +21,86 @@ A 9-step pipeline (`src/bid_copilot/understanding/pipeline.py`) turns raw files 
 
 The web UI streams step progress over SSE, renders the outline with clickable source badges, shows a coverage panel, and exports Word.
 
-## Tech stack
+## Quick Start
 
-- **Backend**: FastAPI + Uvicorn, Python 3.14
-- **LLM**: Azure OpenAI (Responses API) via the `openai` SDK; three model tiers (`main` / `mini` / `nano`) selectable per pipeline step
-- **Document parsing**: `python-docx`, `pdfplumber`, Azure Content Understanding (for `.doc` / scanned PDFs)
-- **Frontend**: Tailwind (CDN) + Alpine.js, no build step
-- **No database** — run state lives in memory + the `runs/` directory on disk
+### Docker
 
-## Project layout
-
-```
-src/bid_copilot/
-  api/main.py            FastAPI app: upload, run, SSE progress/events, tree, export, delete
-  config.py              Settings from env (.env)
-  models.py              Pydantic models (OutlineTree, RequirementItem, SourceRef, …)
-  llm/client.py          Azure OpenAI Responses API wrapper
-  parsing/               docx/pdf extraction + Content Understanding client
-  understanding/         the 9-step pipeline + per-step modules
-    alignment/           merge + supplement (requirement → outline placement)
-    output/              tree numbering + Word export
-  auth/                  optional local login gate
-src/web/                 index.html + app.js (Alpine) + login page
-scripts/run_visible.py   run the full pipeline on a file/folder from the CLI
-tests/                   pytest suite
-```
-
-## Running locally
-
-Requires Python 3.14. Dependencies are imported via `PYTHONPATH=src` (no `pip install -e`).
+1）Generate a strong random token (optional, used as LOCAL_AUTH_PASSWORD)
 
 ```bash
-# 1. create venv + install deps
+openssl rand -hex 32
+```
+
+2）Start the container
+
+```bash
+docker run -itd -p 8080:8080 --name BidCopilot \
+  --restart unless-stopped \
+  -e FOUNDRY_CU_BASE_URL=https://<foundry-resource>.cognitiveservices.azure.com \
+  -e FOUNDRY_CU_API_KEY=your-content-understanding-api-key \
+  -e FOUNDRY_AOAI_BASE_URL=https://<foundry-resource>.openai.azure.com/openai/v1 \
+  -e FOUNDRY_AOAI_API_KEY=your-foundry-api-key \
+  -e LOCAL_AUTH_USERNAME=demo \
+  -e LOCAL_AUTH_PASSWORD=your-strong-random-token \
+  ghcr.io/heyjiqingcode/bidcopilot:1.0.0
+```
+
+> See [Configuration](#configuration) for every available variable.
+
+### Local
+
+1）Set up
+
+```bash
+# Clone code and install requirements
+git clone https://github.com/HeyJiqingCode/BidCopilot.git
+cd BidCopilot
 python -m venv .venv
-.venv/bin/pip install -r requirements.txt
+pip install -r requirements.txt
 
-# 2. configure
-cp .env.example .env        # then fill in your Azure keys/endpoints
+# Copy .env.example and fill in your Azure OpenAI / Foundry settings
+cp .env.example .env
+```
 
-# 3. run the web app
+2）Run the server from source
+
+```bash
+# run the web app
 ENABLE_LOCAL_AUTH=false PYTHONPATH=src .venv/bin/uvicorn bid_copilot.api.main:app --port 8080
+
 # open http://127.0.0.1:8080
 ```
 
-Run the pipeline headless on a file or folder (dumps each step's JSON under `runs/<name>/`):
-
-```bash
-PYTHONPATH=src .venv/bin/python scripts/run_visible.py path/to/tender.docx
-```
-
-Run the tests:
-
-```bash
-PYTHONPATH=src .venv/bin/pytest -q
-```
+> See [Configuration](#configuration) for every available variable.
 
 ## Configuration
 
-All settings come from environment variables (see `.env.example`):
+| Variable | Purpose | Default |
+|---|---|---|
+| `FOUNDRY_AOAI_API_KEY` | Azure OpenAI API key | |
+| `FOUNDRY_AOAI_BASE_URL` | Azure OpenAI v1 endpoint (ends with `/openai/v1/`) | |
+| `FOUNDRY_CU_BASE_URL` | Azure Content Understanding endpoint (optional; needed for `.doc`/scanned PDF) | |
+| `FOUNDRY_CU_API_KEY` | Azure Content Understanding API key (optional) | |
+| `MODEL_MAIN` | main model deployment name | `gpt-5.4` |
+| `MODEL_MINI` | mini model deployment name | `gpt-5.4-mini` |
+| `MODEL_NANO` | nano model deployment name | `gpt-5.4-nano` |
+| `MODEL_CLASSIFY` | model tier for **classify** (`main`/`mini`/`nano`) | `mini` |
+| `MODEL_LOCATE` | model tier for **locate** | `main` |
+| `MODEL_SKELETON` | model tier for **extract_skeleton** | `main` |
+| `MODEL_REQUIREMENTS` | model tier for **extract_requirements** | `main` |
+| `MODEL_MERGE` | model tier for **merge** | `main` |
+| `MODEL_SUPPLEMENT` | model tier for **supplement** | `main` |
+| `EFFORT_CLASSIFY` | reasoning effort for **classify** (`low`/`medium`/`high`) | `low` |
+| `EFFORT_LOCATE` | reasoning effort for **locate** | `medium` |
+| `EFFORT_SKELETON` | reasoning effort for **extract_skeleton** | `medium` |
+| `EFFORT_REQUIREMENTS` | reasoning effort for **extract_requirements** | `medium` |
+| `EFFORT_MERGE` | reasoning effort for **merge** | `high` |
+| `EFFORT_SUPPLEMENT` | reasoning effort for **supplement** | `high` |
+| `ENABLE_LOCAL_AUTH` | enable the local login gate (`true`/`false`) | `false` |
+| `LOCAL_AUTH_USERNAME` | local login username | `admin` |
+| `LOCAL_AUTH_PASSWORD` | local login password | `admin123` |
+| `LOCAL_AUTH_SESSION_HOURS` | login session lifetime in hours | `24` |
+| `LOCAL_AUTH_COOKIE_NAME` | login session cookie name | `bid_copilot_session` |
+| `MAX_CONCURRENCY` | parallelism cap for per-chapter extraction and merge batching | `5` |
 
-| Variable | Purpose |
-|---|---|
-| `FOUNDRY_API_KEY_AOAI` | Azure OpenAI API key |
-| `AOAI_BASE_URL` | Azure OpenAI v1 endpoint (ends with `/openai/v1/`) |
-| `MODEL_MAIN` / `MODEL_MINI` / `MODEL_NANO` | the three model deployment names |
-| `CU_ENDPOINT` / `CU_KEY` | Azure Content Understanding (optional; needed for `.doc`/scanned PDF) |
-| `ENABLE_LOCAL_AUTH` + `LOCAL_AUTH_*` | optional local login gate |
-| `MAX_CONCURRENCY` | parallelism cap for per-chapter extraction and merge batching |
-| `EFFORT_<STEP>` | reasoning effort per step (`low`/`medium`/`high`) |
-| `MODEL_<STEP>` | model tier per step (`main`/`mini`/`nano`) |
-
-**Per-step model tiers** let you trade speed for accuracy. The accuracy-critical steps — `extract_requirements`, `merge`, `supplement` — should stay on `main`; lighter steps (`classify`, `locate`, `skeleton`) can drop to `mini`/`nano`.
-
-## Deployment (Azure Container Apps)
-
-The image is a plain Python service (no local `.doc` converter — `.doc` parsing relies entirely on Content Understanding).
-
-Build the image in the cloud (no local Docker needed) and deploy:
-
-```bash
-# build into ACR
-az acr build --registry <acr-name> --image bid-copilot:0.0.1 .
-
-# deploy (set --target-port explicitly; the app listens on $PORT, default 8080)
-az containerapp up \
-  --name bid-copilot \
-  --resource-group <rg> \
-  --image <acr-name>.azurecr.io/bid-copilot:0.0.1 \
-  --target-port 8080 --ingress external
-```
-
-Then set the environment variables (`FOUNDRY_API_KEY_AOAI`, `AOAI_BASE_URL`, `CU_*`, `MODEL_*`, …) on the container app; the image ships without an `.env`.
+> **Per-step model tiers** let you trade speed for accuracy. The accuracy-critical steps — `extract_requirements`, `merge`, `supplement` — should stay on `main`; lighter steps (`classify`, `locate`, `skeleton`) can drop to `mini`/`nano`.
